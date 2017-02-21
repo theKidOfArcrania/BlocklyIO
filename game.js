@@ -50,7 +50,7 @@ var Tail = (function() {
     };
     this.addTail = addTail.bind(this, data);
     this.hitsTail = hitsTail.bind(this, data);
-    this.render = function(ctx) {var prev = []; iterate(data, render.bind(_this, data, prev, ctx), VOID); };
+    this.render = render.bind(this, data);
     this.move = move.bind(this, data);
     Object.defineProperty(this, "moves", {
       get: function() {return data.tail.slice(0);},
@@ -62,7 +62,6 @@ var Tail = (function() {
   function addTail(data, orientation)
   {
     var prev = data.prev;
-    var tail = data.tail;
     if (!prev || prev.orientation !== orientation)
     {
       prev = data.prev = new TailMove(orientation);
@@ -76,43 +75,9 @@ var Tail = (function() {
       data.tailGrid[r] = [];
     data.tailGrid[r][c] = true;
     
-    switch (orientation)
-    {
-      case 0: data.prevRow--; break; //UP
-      case 1: data.prevCol++; break; //RIGHT
-      case 2: data.prevRow++; break; //DOWN
-      case 3: data.prevCol--; break; //LEFT
-    }
-  }
-  
-  function iterate(data, callback, reducer)
-  {
-    var r = data.startRow;
-    var c = data.startCol; 
-    var other;
-    
-    var val;
-    for (var i = 0; i < data.tail.length; i++) {
-      var sr = r;
-      var sc = c;
-      switch (data.tail[i].orientation)
-      {
-        case 0: r -= data.tail[i].move; break; //UP
-        case 1: c += data.tail[i].move; break; //RIGHT
-        case 2: r += data.tail[i].move; break; //DOWN
-        case 3: c -= data.tail[i].move; break; //LEFT
-      }
-      
-      if (i === 0)
-        val = {shortCircuit: false, value: callback(sr, sc, r - sr, c - sc)};
-      else
-        val = reducer(val, callback(sr, sc, r - sr, c - sc));
-      if (val.shortCircuit)
-        return val.value;
-      else
-        val = val.value;
-    }
-    return val;
+    var pos = walk([data.prevRow, data.prevCol], null, orientation, 1);
+    data.prevRow = pos[0];
+    data.prevCol = pos[1];
   }
   
   function move(data, row, col)
@@ -130,75 +95,89 @@ var Tail = (function() {
     }
   }
   
-  function render(data, prev, ctx, srow, scol, drow, dcol)
+  function render(data, ctx)
   {
-    if (drow === 0 && dcol === 0)
-      return;
-    if (drow !== 0 && dcol !== 0)
-      throw new Error("Invalid tail path.");
-    
     ctx.fillStyle = data.player.tailColor;
     
-    var startPos = [
-      {x: scol * CELL_WIDTH, y: srow * CELL_WIDTH},
-      {x: scol * CELL_WIDTH, y: srow * CELL_WIDTH}
-    ];
-    var finishPos = [
-      {x: (scol + dcol) * CELL_WIDTH, y: (srow + drow) * CELL_WIDTH},
-      {x: (scol + dcol) * CELL_WIDTH, y: (srow + drow) * CELL_WIDTH}
-    ];
+    var prevOrient = -1;
+    var start = [data.startRow, data.startCol];
     
-    if (drow === 0)
+    fillTailRect(ctx, start, start);
+    data.tail.forEach(function(tail) {
+      var negDir = tail.orientation === 0 || tail.orientation === 3;
+
+      var back = start;
+      if (!negDir)
+        start = walk(start, null, tail.orientation, 1);
+      var finish = walk(start, null, tail.orientation, tail.move - 1);
+      
+      if (tail.move > 1)
+        fillTailRect(ctx, start, finish);
+      if (prevOrient !== -1)
+        //Draw folding triangle.
+        renderCorner(ctx, back, prevOrient, tail.orientation);
+      
+      start = finish;
+      if (negDir)
+        walk(start, start, tail.orientation, 1);
+      prevOrient = tail.orientation;
+    });
+    
+    var curOrient = data.player.currentHeading;
+    if (prevOrient === curOrient)
     {
-      startPos[1].y += CELL_WIDTH;
-      startPos[0].x += CELL_WIDTH * Math.sign(dcol);
-      startPos[1].x += CELL_WIDTH * Math.sign(dcol);
-      finishPos[1].y += CELL_WIDTH;
+      fillTailRect(ctx, start, start);
     }
     else
-    {
-      startPos[1].x += CELL_WIDTH;
-      startPos[0].y += CELL_WIDTH * Math.sign(drow);
-      startPos[1].y += CELL_WIDTH * Math.sign(drow);
-      finishPos[1].x += CELL_WIDTH;
-    }
-    
-    if (prev.length != 0)
-    {
-      //Draw the fold triangle.
-      var coords = [];
-      var ind = 0;
-      for (var i = 0; i < startPos.length; i++)
-        for (var j = 0; j < prev.length; j++)
-          if (startPos[i].x === prev[j].x || startPos[i].y === prev[j].y)
-            coords = [startPos[i], startPos[(i == 0 ? 1 : 0)], prev[(j == 0 ? 1 : 0)]];
-      
-      for (i = 0; i < 2; i++)
-      {
-        ctx.moveTo(coords[0].x, coords[0].y);
-        ctx.lineTo(coords[1].x, coords[1].y);
-        ctx.lineTo(coords[2].x, coords[2].y);
-        ctx.closePath();
-        ctx.fill();
-      }
-    }
-    else 
-    {
-      //Draw starting rectangle.
-      fillNegRect(ctx, scol * CELL_WIDTH, srow * CELL_WIDTH, 
-        CELL_WIDTH * (dcol >= 0 ? 1 : 0), CELL_WIDTH * (drow >= 0 ? 1 : 0));
-    }
-    
-    //Draw main tail line.
-    var x = startPos[0].x, y = startPos[0].y;
-    fillNegRect(ctx, x, y, finishPos[1].x - x, finishPos[1].y - y);
-    
-    prev[0] = finishPos[0];
-    prev[1] = finishPos[1];
+      renderCorner(ctx, start, prevOrient, curOrient);
   }
   
-  function fillNegRect(ctx, x, y, width, height)
+  function renderCorner(ctx, cornerStart, dir1, dir2)
   {
+    if (dir1 === 0 || dir2 === 0)
+      walk(cornerStart, cornerStart, 2, 1);
+    if (dir1 === 3 || dir2 === 3)
+      walk(cornerStart, cornerStart, 1, 1);
+    
+    var a = walk(cornerStart, null, dir2, 1);
+    var b = walk(a, null, dir1, 1);
+    
+    var triangle = new Path2D();
+    triangle.moveTo(cornerStart[1] * CELL_WIDTH, cornerStart[0] * CELL_WIDTH);
+    triangle.lineTo(a[1] * CELL_WIDTH, a[0] * CELL_WIDTH);
+    triangle.lineTo(b[1] * CELL_WIDTH, b[0] * CELL_WIDTH);
+    triangle.closePath();
+    for (var i = 0; i < 2; i++)
+      ctx.fill(triangle);
+  }
+  
+  function walk(from, ret, orient, dist)
+  {
+    ret = ret || [];
+    ret[0] = from[0];
+    ret[1] = from[1];
+    switch (orient)
+    {
+      case 0: ret[0] -= dist; break; //UP
+      case 1: ret[1] += dist; break; //RIGHT
+      case 2: ret[0] += dist; break; //DOWN
+      case 3: ret[1] -= dist; break; //LEFT
+    }
+    return ret;
+  }
+  
+  function fillTailRect(ctx, start, end)
+  {
+    var x = start[1] * CELL_WIDTH;
+    var y = start[0] * CELL_WIDTH;
+    var width = (end[1] - start[1]) * CELL_WIDTH;
+    var height = (end[0] - start[0]) * CELL_WIDTH;
+    
+    if (width === 0)
+      width += CELL_WIDTH;
+    if (height === 0)
+      height += CELL_WIDTH;
+    
     if (width < 0)
     {
       x += width;
@@ -214,25 +193,12 @@ var Tail = (function() {
   
   function hitsTail(data, other)
   {
-    var r = data.prevRow;
-    var c = data.prevCol; 
     return !!(data.tailGrid[other.row] && data.tailGrid[other.row][other.col]);
   }
   
   function VOID()
   {
     return {shortCircuit: false, value: undefined};
-  }
-  
-  //Helper methods.
-  function inRange(check, a, b)
-  {
-    if (a === b)
-      return a === check;
-    else if (a < b)
-      return a <= check && check < b;
-    else
-      return b <= check && check < a;
   }
   
   return Tail;
@@ -243,6 +209,7 @@ var Player = (function() {
   var SHADOW_OFFSET = 10;
   
   function Player(socket, grid, num) {
+    var _this = this;
     var data = {};
     
     //TODO: load player data and color.
@@ -257,9 +224,9 @@ var Player = (function() {
     this.name = 'Player ' + (num + 1);
     
     data.grid = grid;
-    data.curHeading = 0;
-    data.row = Math.floor(Math.random() * 20) + 10;
-    data.col = num;
+    data.curHeading = 2;
+    data.row = Math.floor(Math.random() * 10) + 10;
+    data.col = 10;//num;
     data.dead = false;
     
     data.tail = new Tail(this);
@@ -271,6 +238,8 @@ var Player = (function() {
     this.posY = data.row * CELL_WIDTH;
     this.move = move.bind(this, data);
     
+    this.die = function() {data.dead = true;}
+    
     //Properties.
     Object.defineProperties(this, {
       currentHeading: defineGetter(function() {return data.curHeading;}),
@@ -278,7 +247,7 @@ var Player = (function() {
       row: defineGetter(function() {return data.row;}),
       col: defineGetter(function() {return data.col;}),
       num: defineGetter(function() {return num;}),
-      tail:  defineGetter(function() {return data.tail;})
+      tail:  defineGetter(function() {return data.tail;}),
     });
   }
   
@@ -286,10 +255,7 @@ var Player = (function() {
   Player.prototype.render = function(ctx)
   {
     //Render tail.
-    function a() {};
-    this.tail.render({
-      moveTo: a, lineTo: a, closePath: a, fill: a, stroke: a, fillRect : a
-    }/*ctx*/);
+    this.tail.render(ctx);
     
     //Render player.
     ctx.fillStyle = this.shadowColor;
@@ -374,7 +340,7 @@ var Player = (function() {
         if(t < 1/2) return q;
         if(t < 2/3) return p + (q - p) * (2/3 - t) * 6;
         return p;
-      }
+      };
 
       var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
       var p = 2 * l - q;
@@ -413,7 +379,7 @@ $(function() {
   var grid = []; 
   
   //Load players.
-  for (var p = 0; p < 9; p++)
+  for (var p = 0; p < 1; p++)
   {
     //TODO: socket loading.
     players[p] = new Player(null, grid, p);
@@ -487,8 +453,8 @@ $(function() {
           else
           {
             //...otherwise, the one that sustains most of the collision will be removed.
-            areaI = area(players[i]);
-            areaJ = area(players[j]);
+            var areaI = area(players[i]);
+            var areaJ = area(players[j]);
             
             if (areaI === areaJ)
               removing[i] = removing[j] = true;
@@ -503,7 +469,10 @@ $(function() {
     
     players = players.filter(function(val, i) {
       if (removing[i])
+      {
         dead.push(val);
+        val.die();
+      }
       return !removing[i];
     });
     
@@ -579,6 +548,9 @@ $(function() {
     }
   }
   
+  //TODO: current player index
+  var user = players[0];
+  
   function paintLoop()
   {
     ctx.fillStyle = 'whitesmoke';
@@ -591,12 +563,19 @@ $(function() {
     });
     ctx.setTransform(1, 0, 0, 1, 0, 0); //Reset transform.
     
+    if (user.dead)
+    {
+      console.log("You died!");
+      return;
+    }
+    
     //TODO: sync each loop with server. (server will give frame count.)
     frameCount++;
     update();
     requestAnimationFrame(paintLoop);
   }
   paintLoop();
+  
   
   //Event listeners
   $(document).keydown(function(e) {
@@ -610,8 +589,12 @@ $(function() {
       default: return; //exit handler for other keys.
     }
     
-    //TODO: current player index, and notify server.
-    players[0].heading = newHeading;
+    if (newHeading === user.currentHeading || ((newHeading % 2 === 0) ^ 
+      (user.currentHeading % 2 === 0)))
+    {
+      //TODO: notify server.
+      user.heading = newHeading;
+    }
     e.preventDefault();
   });
 });
