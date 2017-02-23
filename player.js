@@ -2,6 +2,10 @@ var Stack;
 if (!Stack)
   throw new Error("Require stack.js");
 
+var Color;
+if (!Color)
+  throw new Error("Requre color.js");
+
 var Tail = (function() {
   var CELL_WIDTH = 30;
   var GRID_SIZE = 200;
@@ -44,7 +48,6 @@ var Tail = (function() {
     if (!tailGrid[r])
       tailGrid[r] = [];
     tailGrid[r][c] = true;
-    
   }
   
   function addTail(data, orientation)
@@ -87,7 +90,7 @@ var Tail = (function() {
   
   function render2(data, ctx)
   {
-    ctx.fillStyle = data.player.tailColor;
+    ctx.fillStyle = data.player.tailColor.rgbString();
     for (var r = 0; r < data.tailGrid.length; r++)
     {
       if (!data.tailGrid[r])
@@ -100,7 +103,10 @@ var Tail = (function() {
   
   function render(data, ctx)
   {
-    ctx.fillStyle = data.player.tailColor;
+    if (data.tail.length === 0)
+      return;
+    
+    ctx.fillStyle = data.player.tailColor.rgbString();
     
     var prevOrient = -1;
     var start = [data.startRow, data.startCol];
@@ -203,7 +209,7 @@ var Tail = (function() {
     function onTail(c) { return data.tailGrid[c[0]] && data.tailGrid[c[0]][c[1]]; }
     
     var start = [data.startRow, data.startCol];
-    var been = new Array(grid.length);
+    var been = new Grid(grid.size);
     var coords = [];
     
     coords.push(start);
@@ -213,18 +219,16 @@ var Tail = (function() {
       var r = coord[0];
       var c = coord[1];
       
-      if (r < 0 || c < 0 || r >= grid.length || c >= grid[r].length)
-        continue; //Out of bounds!
+      if (grid.isOutOfBounds(r, c))
+        continue;
       
-      if (been[r] && been[r][c])
+      if (been.get(r, c))
         continue;
       
       if (onTail(coord)) //on the tail.
       {
-        if (!been[r])
-          been[r] = new Array(grid[r].length);
-        been[r][c] = true;
-        grid[r][c] = data.player;
+        been.set(r, c, true);
+        grid.set(r, c, data.player);
         
         //Find all spots that this tail encloses.
         floodFill(data, grid, r + 1, c, been);
@@ -255,19 +259,17 @@ var Tail = (function() {
       var r = coord[0];
       var c = coord[1];
       
-      if (r < 0 || c < 0 || r >= grid.length || c >= grid[r].length)
+      if (grid.isOutOfBounds(r, c))
       {
         surrounded = false;
-        continue; //Out of bounds!
+        continue;
       }
       
       //End this traverse on boundaries (where we been, on the tail, and when we enter our territory)
-      if ((been[r] && been[r][c]) || onTail(coord) || grid[r][c] === data.player)
+      if (been.get(r, c) || onTail(coord) || grid.get(r, c) === data.player)
         continue;
         
-      if (!been[r])
-        been[r] = new Array(grid[r].length);
-      been[r][c] = true;
+      been.set(r, c, true);
       
       if (surrounded)
         filled.push(coord);
@@ -282,7 +284,7 @@ var Tail = (function() {
       while (!filled.isEmpty())
       {
         coord = filled.pop();
-        grid[coord[0]][coord[1]] = data.player;
+        grid.set(coord[0], coord[1], data.player);
       }
     }
     
@@ -302,24 +304,23 @@ this.Player = (function() {
   var SPEED = 5;
   var SHADOW_OFFSET = 10;
   
-  function Player(socket, grid, num) {
+  function Player(socket, grid, num, row, col) {
     var data = {};
     
     //TODO: load player data and color.
     
     var hue = Math.random();
-    var base = hslToRgb(hue, .8, .5);
-    this.baseColor = rgbString(base);
-    this.shadowColor = rgbString(hslToRgb(hue, .8, .2));
-    base[3] = .5;
-    this.tailColor = rgbaString(base);
+    var base = new Color(hue, .8, .5);
+    this.baseColor = base;
+    this.shadowColor = base.deriveLumination(-.3);
+    this.tailColor = base.deriveLumination(.2).deriveAlpha(.5);
     
     this.name = 'Player ' + (num + 1);
     
     data.grid = grid;
     data.curHeading = 2;
-    data.row = Math.floor(Math.random() * 10) + 10;
-    data.col = 10;//num;
+    data.row = row || 0;
+    data.col = col || 0;
     data.dead = false;
     
     data.tail = new Tail(this);
@@ -350,13 +351,13 @@ this.Player = (function() {
     this.tail.render(ctx);
     
     //Render player.
-    ctx.fillStyle = this.shadowColor;
+    ctx.fillStyle = this.shadowColor.rgbString();
     ctx.fillRect(this.posX, this.posY, CELL_WIDTH, CELL_WIDTH);
     
     var mid = CELL_WIDTH / 2;
     var grd = ctx.createRadialGradient(this.posX + mid, this.posY + mid - SHADOW_OFFSET, 1,
               this.posX + mid, this.posY + mid - SHADOW_OFFSET, CELL_WIDTH);
-    grd.addColorStop(0, this.baseColor);
+    grd.addColorStop(0, this.baseColor.rgbString());
     grd.addColorStop(1, "white");
     ctx.fillStyle = grd;
     ctx.fillRect(this.posX, this.posY - SHADOW_OFFSET, CELL_WIDTH, CELL_WIDTH);
@@ -394,13 +395,13 @@ this.Player = (function() {
     data.row = row;
     data.col = col;
     
-    if (row < 0 || row > data.grid.length || col < 0 || col > data.grid[row].length)
+    if (data.grid.isOutOfBounds(row, col))
     {
       data.dead = true;
       return;
     }
     
-    if (data.grid[row][col] === this)
+    if (data.grid.get(row, col) === this)
     {
       //Safe zone!
       this.tail.fillTail(data.grid);
@@ -423,39 +424,7 @@ this.Player = (function() {
     };
   }
   
-  //http://stackoverflow.com/a/9493060/7344257
-  function hslToRgb(h, s, l){
-    var r, g, b;
-
-    if(s == 0){
-      r = g = b = l; // achromatic
-    }else{
-      var hue2rgb = function hue2rgb(p, q, t){
-        if(t < 0) t += 1;
-        if(t > 1) t -= 1;
-        if(t < 1/6) return p + (q - p) * 6 * t;
-        if(t < 1/2) return q;
-        if(t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-        return p;
-      };
-
-      var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-      var p = 2 * l - q;
-      r = hue2rgb(p, q, h + 1/3);
-      g = hue2rgb(p, q, h);
-      b = hue2rgb(p, q, h - 1/3);
-    }
-
-    return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
-  }
-
-  function rgbString(rgb) {
-    return 'rgb(' + rgb[0] + ', ' + rgb[1] + ', ' + rgb[2] + ')';
-  }
   
-  function rgbaString(rgb) {
-    return 'rgba(' + rgb[0] + ', ' + rgb[1] + ', ' + rgb[2] + ', ' + rgb[3] + ')';
-  }
   
   return Player;
 })();

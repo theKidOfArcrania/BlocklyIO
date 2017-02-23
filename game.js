@@ -1,14 +1,12 @@
 var Player;
-
 if (!Player)
   throw new Error("Requires player.js");
 
-//Thanks to https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/random
-function getRandomInt(min, max) {
-  min = Math.ceil(min);
-  max = Math.floor(max);
-  return Math.floor(Math.random() * (max - min)) + min;
-}
+var Grid;
+if (!Grid)
+  throw new Error("Requires grid.js");
+  
+
 
 /**
  * Provides requestAnimationFrame in a cross browser way.
@@ -35,36 +33,47 @@ $(function() {
   var CELL_WIDTH = 30;
   var SPEED = 5;
   var SHADOW_OFFSET = 5;
-  
+  var MAX_FRAMES = 16;
+  var DROP_HEIGHT = 16;
+  var BOUNCE_FRAMES = 8;
+  var DROP_SPEED = 2;
   var canvas = $("#main-ui")[0];
   var ctx = canvas.getContext('2d');
 
   var width = canvas.width = window.innerWidth - 20;
   var height = canvas.height = window.innerHeight - 20;
-
+  
   var players = [];
-  var grid = []; 
+  var animateOff = true;
+  var animateGrid = new Grid(GRID_SIZE);
+  var grid = new Grid(GRID_SIZE, function(row, col, before, after) {
+    if (before === after || animateOff)
+      return;
+    animateGrid.set(row, col, {
+      before: before,
+      after: after,
+      frame: 0
+    });
+  }); 
   
   //Load players.
-  for (var p = 0; p < 1; p++)
+  for (var p = 0; p < 9; p++)
   {
     //TODO: socket loading.
-    players[p] = new Player(null, grid, p);
+    players[p] = new Player(null, grid, p, getRandomInt(0, GRID_SIZE), getRandomInt(0, GRID_SIZE));
   }
   
   //Load grid.
-  for (var r = 0; r < GRID_SIZE; r++)
+  for (var r = 0; r < grid.size; r++)
   {
-    grid[r] = [];
-    for (var c = 0; c < GRID_SIZE; c++)
+    for (var c = 0; c < grid.size; c++)
     {
       //TODO: load data.
-      if (Math.random() < .9)
-        grid[r][c] = -1;
-      else
-        grid[r][c] = players[getRandomInt(0, players.length)];
+      if (Math.random() > .9)
+        grid.set(r, c, players[getRandomInt(0, players.length)]);
     }
   }
+  animateOff = false;
 
   var frameCount = 0;
   var animateTo = [0, 0];
@@ -72,6 +81,7 @@ $(function() {
   
   //TODO: current player index
   var user = players[0];
+  centerOnPlayer(user, offset);
   
   function update()
   {
@@ -115,9 +125,9 @@ $(function() {
           squaresIntersect(players[i].startY, players[j].startY))
         {
           //...if one player is own his own territory, the other is out.
-          if (grid[players[i].row][players[i].col] === players[i])
+          if (grid.get(players[i].row, players[i].col) === players[i])
             removing[j] = true;
-          else if (grid[players[j].row][players[j].col] === players[j])
+          else if (grid.get(players[j].row, players[j].col) === players[j])
             removing[i] = true;
           else
           {
@@ -148,13 +158,25 @@ $(function() {
     dead.forEach(function(val) {
       console.log(val.name + " is dead");
     });
+    for (var r = 0; r < grid.size; r++)
+    {
+      for (var c = 0; c < grid.size; c++)
+      {
+        if (dead.indexOf(grid.get(r, c)) !== -1)
+          grid.set(r, c, null);
+      }
+    }
     
     //TODO: animate dead, and if this player is dead.
-    var xOff = Math.floor(user.posX - (width - CELL_WIDTH) / 2);
-    var yOff = Math.floor(user.posY - (height - CELL_WIDTH) / 2);
-    
-    animateTo[0] = Math.min(Math.max(xOff, 0), GRID_SIZE * CELL_WIDTH);
-    animateTo[1] = Math.min(Math.max(yOff, 0), GRID_SIZE * CELL_WIDTH);
+    centerOnPlayer(user, animateTo);
+  }
+  
+  function centerOnPlayer(player, pos)
+  {
+    var xOff = Math.floor(player.posX - (width - CELL_WIDTH) / 2);
+    var yOff = Math.floor(player.posY - (height - CELL_WIDTH) / 2);
+    pos[0] = Math.min(Math.max(xOff, 0), grid.size * CELL_WIDTH - width / 2);
+    pos[1] = Math.min(Math.max(yOff, 0), grid.size * CELL_WIDTH - width / 2);
   }
   
   function area(player)
@@ -168,6 +190,13 @@ $(function() {
       return Math.abs(player.startX - xDest);
   }
   
+  //Thanks to https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/random
+  function getRandomInt(min, max) {
+    min = Math.ceil(min);
+    max = Math.floor(max);
+    return Math.floor(Math.random() * (max - min)) + min;
+  }
+  
   function squaresIntersect(a, b)
   {
     if (a < b)
@@ -176,44 +205,122 @@ $(function() {
       return a < b + CELL_WIDTH;
   }
   
+  function paintGridLines()
+  {
+    ctx.fillStyle = 'lightgray';
+    ctx.beginPath();
+    for (var x = modRotate(-offset[0], CELL_WIDTH); x < width; x += CELL_WIDTH)
+    {
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+    }
+    for (var y = modRotate(-offset[1], CELL_WIDTH); y < height; y+= CELL_WIDTH)
+    {
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+    }
+    ctx.stroke();
+  }
+  
+  function modRotate(val, mod)
+  {
+    var res = val % mod;
+    if (res >= 0)
+      return res;
+    else
+      return mod + res;
+  }
+  
   function paintGrid()
   {
     //Paint bottom grid lines.
-    //ctx.fillStyle = 'lightgray';
-    //ctx.beginPath();
-    //for (var x = modRotate(-offset[0], CELL_WIDTH); x < width; x += CELL_WIDTH)
-    //{
-    //  ctx.moveTo(x, 0);
-    //  ctx.lineTo(x, height);
-    //}
-    //for (var y = modRotate(-offset[1], CELL_WIDTH); y < height; y+= CELL_WIDTH)
-    //{
-    //  ctx.moveTo(0, y);
-    //  ctx.lineTo(width, y);
-    //}
-    //ctx.stroke();
+    //paintGridLines();
     
-    //Paint occupied areas.
-    for (var r = Math.floor(offset[1] / CELL_WIDTH); r * CELL_WIDTH - offset[1] < height; r++)
+    //Paint occupied areas. (and fading ones).
+    for (var r = Math.floor(offset[1] / CELL_WIDTH); r < grid.size && r * CELL_WIDTH - offset[1] < height; r++)
     {
-      for (var c = Math.floor(offset[0] / CELL_WIDTH); c * CELL_WIDTH - offset[0] < width; c++)
+      for (var c = Math.floor(offset[0] / CELL_WIDTH); c < grid.size && c * CELL_WIDTH - offset[0] < width; c++)
       {
-        if (grid[r][c] !== -1)
+        var p = grid.get(r, c);
+        var x = c * CELL_WIDTH, y = r * CELL_WIDTH, baseColor, shadowColor;
+        
+        var animateSpec = animateGrid.get(r, c);
+        if (!animateOff && animateSpec)
         {
-          var x = c * CELL_WIDTH, 
-                y = r * CELL_WIDTH,
-                p = grid[r][c];
-          ctx.fillStyle = p.shadowColor;
-          ctx.fillRect(x, y + SHADOW_OFFSET, CELL_WIDTH, CELL_WIDTH);
-          ctx.fillStyle = p.baseColor;
-          ctx.fillRect(x, y, CELL_WIDTH, CELL_WIDTH);
+          if (animateSpec.before) //fading animation
+          {
+            var alpha = 1 - (animateSpec.frame / MAX_FRAMES);
+            baseColor = animateSpec.before.baseColor.deriveAlpha(alpha);
+            shadowColor = animateSpec.before.shadowColor.deriveAlpha(alpha);
+          }
+          else
+            continue;
+        } 
+        else if (p)
+        {
+          baseColor = p.baseColor;
+          shadowColor = p.shadowColor;
+        }
+        else //No animation nor is this player owned. 
+          continue;
+        
+        ctx.fillStyle = shadowColor.rgbString();
+        ctx.fillRect(x, y + CELL_WIDTH, CELL_WIDTH, SHADOW_OFFSET);
+        ctx.fillStyle = baseColor.rgbString();
+        ctx.fillRect(x, y, CELL_WIDTH, CELL_WIDTH);
+      }
+    }
+    
+    if (animateOff)
+      return;
+    
+    //Paint squares with drop in animation.
+    for (var r = 0; r < grid.size; r++)
+    {
+      for (var c = 0; c < grid.size; c++)
+      {
+        animateSpec = animateGrid.get(r, c);
+        x = c * CELL_WIDTH, y = r * CELL_WIDTH;
+        
+        if (animateSpec && !animateOff) 
+        {
+          if (animateSpec.after)
+          {
+            
+            var offsetBounce = 0;
+            if (animateSpec.frame >= MAX_FRAMES - BOUNCE_FRAMES)
+            {
+              var bounce = animateSpec.frame - MAX_FRAMES + BOUNCE_FRAMES;
+              var bounceHeight = BOUNCE_FRAMES / 2 * DROP_SPEED;
+              if (bounce >= BOUNCE_FRAMES / 2)
+                offsetBounce = bounceHeight - (bounce - BOUNCE_FRAMES / 2) * DROP_SPEED;
+              else
+                offsetBounce = bounce * DROP_SPEED;
+            }
+            else
+              offsetBounce = DROP_HEIGHT - DROP_SPEED * animateSpec.frame;
+            
+            y -= offsetBounce;
+            
+            shadowColor = animateSpec.after.shadowColor;
+            baseColor = animateSpec.after.baseColor.deriveLumination(-(offsetBounce / DROP_HEIGHT) * .1);
+            
+            ctx.fillStyle = shadowColor.rgbString();
+            ctx.fillRect(x, y + SHADOW_OFFSET, CELL_WIDTH, CELL_WIDTH);
+            ctx.fillStyle = baseColor.rgbString();
+            ctx.fillRect(x, y, CELL_WIDTH, CELL_WIDTH);
+          }
+          
+          animateSpec.frame++;
+          if (animateSpec.frame >= MAX_FRAMES)
+            animateGrid.set(r, c, null);
         }
       }
     }
   }
   
   
-  
+  var showedDead = false;
   function paintLoop()
   {
     ctx.fillStyle = 'whitesmoke';
@@ -226,10 +333,11 @@ $(function() {
     });
     ctx.setTransform(1, 0, 0, 1, 0, 0); //Reset transform.
     
-    if (user.dead)
+    if (user.dead && !showedDead)
     {
+      showedDead = true;
       console.log("You died!");
-      return;
+      //return;
     }
     
     //TODO: sync each loop with server. (server will give frame count.)
@@ -242,6 +350,8 @@ $(function() {
   
   //Event listeners
   $(document).keydown(function(e) {
+    if (user.dead)
+      return;
     var newHeading = -1;
     switch (e.which)
     {
