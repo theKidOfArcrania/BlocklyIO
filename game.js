@@ -29,6 +29,7 @@ if ( !window.requestAnimationFrame ) {
 
 
 $(function() {
+  var BORDER_WIDTH = 20;
   var GRID_SIZE = 200;
   var CELL_WIDTH = 30;
   var SPEED = 5;
@@ -175,8 +176,8 @@ $(function() {
   {
     var xOff = Math.floor(player.posX - (width - CELL_WIDTH) / 2);
     var yOff = Math.floor(player.posY - (height - CELL_WIDTH) / 2);
-    pos[0] = Math.min(Math.max(xOff, 0), grid.size * CELL_WIDTH - width / 2);
-    pos[1] = Math.min(Math.max(yOff, 0), grid.size * CELL_WIDTH - width / 2);
+    pos[0] = Math.max(Math.min(xOff, grid.size * CELL_WIDTH + BORDER_WIDTH * 2 - width), 0);
+    pos[1] = Math.max(Math.min(yOff, grid.size * CELL_WIDTH + BORDER_WIDTH * 2 - height), 0);
   }
   
   function area(player)
@@ -203,6 +204,17 @@ $(function() {
       return b < a + CELL_WIDTH;
     else
       return a < b + CELL_WIDTH;
+  }
+  
+  function paintGridBorder() 
+  {
+    ctx.fillStyle = 'lightgray';
+    var gridWidth = CELL_WIDTH * GRID_SIZE;
+    
+    ctx.fillRect(-BORDER_WIDTH, 0, BORDER_WIDTH, gridWidth);
+    ctx.fillRect(-BORDER_WIDTH, -BORDER_WIDTH, gridWidth + BORDER_WIDTH * 2, BORDER_WIDTH);
+    ctx.fillRect(gridWidth, 0, BORDER_WIDTH, gridWidth);
+    ctx.fillRect(-BORDER_WIDTH, gridWidth, gridWidth + BORDER_WIDTH * 2, BORDER_WIDTH);
   }
   
   function paintGridLines()
@@ -233,13 +245,21 @@ $(function() {
   
   function paintGrid()
   {
-    //Paint bottom grid lines.
+    ctx.translate(BORDER_WIDTH, BORDER_WIDTH);
+    
+    paintGridBorder();
     //paintGridLines();
     
+    //Get viewing limits
+    var minRow = Math.max(Math.floor((offset[1] - BORDER_WIDTH) / CELL_WIDTH), 0); 
+    var minCol = Math.max(Math.floor((offset[0] - BORDER_WIDTH) / CELL_WIDTH), 0); 
+    var maxRow = Math.min(Math.ceil((offset[1] + height) / CELL_WIDTH), grid.size); 
+    var maxCol = Math.min(Math.ceil((offset[0] + width) / CELL_WIDTH), grid.size); 
+      
     //Paint occupied areas. (and fading ones).
-    for (var r = Math.floor(offset[1] / CELL_WIDTH); r < grid.size && r * CELL_WIDTH - offset[1] < height; r++)
+    for (var r = minRow; r < maxRow; r++)
     {
-      for (var c = Math.floor(offset[0] / CELL_WIDTH); c < grid.size && c * CELL_WIDTH - offset[0] < width; c++)
+      for (var c = minCol; c < maxCol; c++)
       {
         var p = grid.get(r, c);
         var x = c * CELL_WIDTH, y = r * CELL_WIDTH, baseColor, shadowColor;
@@ -264,8 +284,11 @@ $(function() {
         else //No animation nor is this player owned. 
           continue;
         
-        ctx.fillStyle = shadowColor.rgbString();
-        ctx.fillRect(x, y + CELL_WIDTH, CELL_WIDTH, SHADOW_OFFSET);
+        if (!grid.isOutOfBounds(r + 1, c) && !grid.get(r + 1, c) && !animateGrid.get(r + 1, c))
+        {
+          ctx.fillStyle = shadowColor.rgbString();
+          ctx.fillRect(x, y + CELL_WIDTH, CELL_WIDTH, SHADOW_OFFSET);
+        }
         ctx.fillStyle = baseColor.rgbString();
         ctx.fillRect(x, y, CELL_WIDTH, CELL_WIDTH);
       }
@@ -284,9 +307,10 @@ $(function() {
         
         if (animateSpec && !animateOff) 
         {
-          if (animateSpec.after)
+          var viewable = r >= minRow && r < maxRow && c >= minCol && c < maxCol;
+          if (animateSpec.after && viewable)
           {
-            
+            //Bouncing the squares.
             var offsetBounce = 0;
             if (animateSpec.frame >= MAX_FRAMES - BOUNCE_FRAMES)
             {
