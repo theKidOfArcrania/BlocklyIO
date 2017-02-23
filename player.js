@@ -7,8 +7,8 @@ if (!Color)
   throw new Error("Requre color.js");
 
 var Tail = (function() {
-  var CELL_WIDTH = 30;
-  var GRID_SIZE = 200;
+  var CELL_WIDTH = 40;
+  var GRID_SIZE = 80;
   
   function TailMove(orientation)
   {
@@ -111,7 +111,7 @@ var Tail = (function() {
     var prevOrient = -1;
     var start = [data.startRow, data.startCol];
     
-    fillTailRect(ctx, start, start);
+    //fillTailRect(ctx, start, start);
     data.tail.forEach(function(tail) {
       var negDir = tail.orientation === 0 || tail.orientation === 3;
 
@@ -293,14 +293,15 @@ var Tail = (function() {
   
   function hitsTail(data, other)
   {
-    return (data.prevRow !== other.row || data.prevCol !== other.col) && 
+    return (data.prevRow !== other.row || data.prevCol !== other.col) &&
+          (data.startRow !== other.row || data.startCol !== other.col) && 
       !!(data.tailGrid[other.row] && data.tailGrid[other.row][other.col]);
   }
   
   return Tail;
 }());
 this.Player = (function() {
-  var CELL_WIDTH = 30;
+  var CELL_WIDTH = 40;
   var SPEED = 5;
   var SHADOW_OFFSET = 10;
   
@@ -345,22 +346,28 @@ this.Player = (function() {
   }
   
   //Instance methods
-  Player.prototype.render = function(ctx)
+  Player.prototype.render = function(ctx, fade)
   {
     //Render tail.
     this.tail.render(ctx);
     
     //Render player.
-    ctx.fillStyle = this.shadowColor.rgbString();
+    fade = fade || 1;
+    ctx.fillStyle = this.shadowColor.deriveAlpha(fade).rgbString();
     ctx.fillRect(this.posX, this.posY, CELL_WIDTH, CELL_WIDTH);
     
     var mid = CELL_WIDTH / 2;
     var grd = ctx.createRadialGradient(this.posX + mid, this.posY + mid - SHADOW_OFFSET, 1,
               this.posX + mid, this.posY + mid - SHADOW_OFFSET, CELL_WIDTH);
-    grd.addColorStop(0, this.baseColor.rgbString());
+    grd.addColorStop(0, this.baseColor.deriveAlpha(fade).rgbString());
     grd.addColorStop(1, "white");
     ctx.fillStyle = grd;
     ctx.fillRect(this.posX, this.posY - SHADOW_OFFSET, CELL_WIDTH, CELL_WIDTH);
+    
+    //Render name
+    ctx.fillStyle = this.shadowColor.deriveAlpha(fade).rgbString();
+    ctx.textAlign = "center";
+    ctx.fillText(this.name, this.posX + CELL_WIDTH / 2, this.posY - SHADOW_OFFSET * 2);
   };
   
   function move(data)
