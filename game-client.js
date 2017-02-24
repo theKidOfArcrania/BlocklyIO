@@ -1,13 +1,6 @@
-var Player;
-if (!Player)
-  throw new Error("Requires player.js");
-
-var Grid;
-if (!Grid)
-  throw new Error("Requires grid.js");
-  
-
-
+var Player = require("./player.js");
+var Grid = require("./grid.js");
+ 
 /**
  * Provides requestAnimationFrame in a cross browser way.
  * @author paulirish / http://paulirish.com/
@@ -80,9 +73,16 @@ $(function() {
     //TODO: socket loading.
     var pRow = getRandomInt(0, GRID_SIZE);
     var pCol = getRandomInt(0, GRID_SIZE);
+    var sdata = {
+      posX: pCol * CELL_WIDTH,
+      posY: pRow * CELL_WIDTH,
+      currentHeading: getRandomInt(0, 4),
+      //name: ...,
+      num: p
+    }
     
     playerPortion[p] = 0;
-    allPlayers[p] = players[p] = new Player(null, grid, p, pRow, pCol);
+    allPlayers[p] = players[p] = new Player(true, grid, sdata);
     
     for (var dr = -1; dr <= 1; dr++)
       for (var dc = -1; dc <= 1; dc++)

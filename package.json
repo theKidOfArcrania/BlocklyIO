@@ -1,0 +1,28 @@
+{
+  "name": "paper-io",
+  "version": "0.9.0",
+  "description": "An multiplayer-IO type game (cloned)",
+  "main": "",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/theKidOfArcrania/PaperIO-Web.git"
+  },
+  "keywords": [
+    "Paper-IO",
+    "IO",
+    "Game"
+  ],
+  "author": "theKidOfArcrania",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/theKidOfArcrania/PaperIO-Web/issues"
+  },
+  "homepage": "https://github.com/theKidOfArcrania/PaperIO-Web#readme",
+  "dependencies": {
+    "finalhandler": "^1.0.0",
+    "serve-static": "^1.11.2"
+  }
+}
