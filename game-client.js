@@ -446,7 +446,7 @@ $(function() {
     
     var barOffset;
     ctx.fillStyle = "white";
-    ctx.font = "24px Arial";
+    ctx.font = "24px Changa";
     barOffset = ctx.measureText(user.name).width + 10;
     ctx.fillText(user.name, 5, CELL_WIDTH - 5);
     
@@ -462,7 +462,7 @@ $(function() {
     
     //Percentage
     ctx.fillStyle = "white";
-    ctx.font = "18px Arial";
+    ctx.font = "18px Changa";
     ctx.fillText((lagPortion * 100).toFixed(3) + "%", 5 + barOffset, CELL_WIDTH - 5);
     
     if (user.dead && !showedDead)

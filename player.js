@@ -417,7 +417,12 @@ Player.prototype.render = function(ctx, fade)
   //Render name
   ctx.fillStyle = this.shadowColor.deriveAlpha(fade).rgbString();
   ctx.textAlign = "center";
-  ctx.fillText(this.name, this.posX + CELL_WIDTH / 2, this.posY - SHADOW_OFFSET * 2);
+  
+  var yoff = -SHADOW_OFFSET * 2
+  if (this.row === 0)
+    yoff = SHADOW_OFFSET * 2 + CELL_WIDTH;
+  ctx.font = "18px Changa";
+  ctx.fillText(this.name, this.posX + CELL_WIDTH / 2, this.posY + yoff);
 };
 
 function move(data)

@@ -533,7 +533,7 @@ $(function() {
     
     var barOffset;
     ctx.fillStyle = "white";
-    ctx.font = "24px Arial";
+    ctx.font = "24px Changa";
     barOffset = ctx.measureText(user.name).width + 10;
     ctx.fillText(user.name, 5, CELL_WIDTH - 5);
     
@@ -549,7 +549,7 @@ $(function() {
     
     //Percentage
     ctx.fillStyle = "white";
-    ctx.font = "18px Arial";
+    ctx.font = "18px Changa";
     ctx.fillText((lagPortion * 100).toFixed(3) + "%", 5 + barOffset, CELL_WIDTH - 5);
     
     if (user.dead && !showedDead)
@@ -655,8 +655,6 @@ function defineInstanceMethods(thisobj, data /*, methods...*/)
   for (var i = 2; i < arguments.length; i++)
     thisobj[arguments[i].name] = arguments[i].bind(this, data);
 }
-
-
 
 function defineAccessorProperties(thisobj, data /*, names...*/)
 {
@@ -1060,7 +1058,12 @@ Player.prototype.render = function(ctx, fade)
   //Render name
   ctx.fillStyle = this.shadowColor.deriveAlpha(fade).rgbString();
   ctx.textAlign = "center";
-  ctx.fillText(this.name, this.posX + CELL_WIDTH / 2, this.posY - SHADOW_OFFSET * 2);
+  
+  var yoff = -SHADOW_OFFSET * 2
+  if (this.row === 0)
+    yoff = SHADOW_OFFSET * 2 + CELL_WIDTH;
+  ctx.font = "18px Changa";
+  ctx.fillText(this.name, this.posX + CELL_WIDTH / 2, this.posY + yoff);
 };
 
 function move(data)
