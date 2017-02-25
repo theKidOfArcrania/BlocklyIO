@@ -268,8 +268,8 @@ $(function() {
           removing[i] = true;
         
         //Remove players with collisons...
-        if (i !== j && squaresIntersect(players[i].startX, players[j].startX) &&
-          squaresIntersect(players[i].startY, players[j].startY))
+        if (i !== j && squaresIntersect(players[i].posX, players[j].posX) &&
+          squaresIntersect(players[i].posY, players[j].posY))
         {
           //...if one player is own his own territory, the other is out.
           if (grid.get(players[i].row, players[i].col) === players[i])
@@ -337,10 +337,10 @@ $(function() {
     var xDest = player.col * CELL_WIDTH;
     var yDest = player.row * CELL_WIDTH;
     
-    if (player.startX === xDest)
-      return Math.abs(player.startY - yDest);
+    if (player.posX === xDest)
+      return Math.abs(player.posY - yDest);
     else
-      return Math.abs(player.startX - xDest);
+      return Math.abs(player.posX - xDest);
   }
   
   //Thanks to https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/random
@@ -561,7 +561,6 @@ $(function() {
     ctx.fillText(user.name, 5, CELL_WIDTH - 5);
     
     zoom = 1 / (lagPortion + 1); //Zoom goes from 1 to .5, decreasing as portion goes up. TODO: maybe can modify this?
-    console.log(zoom);
     
     //Draw filled bar.
     ctx.fillStyle = "rgba(180, 180, 180, .3)";
@@ -911,13 +910,14 @@ function fillTailRect(ctx, start, end)
 }
 
 //TODO: fade in colors using grid property-getters/setters
-function fillTail(data, grid)
+function fillTail(data)
 {
   if (data.tail.length === 0)
     return;
   
   function onTail(c) { return data.tailGrid[c[0]] && data.tailGrid[c[0]][c[1]]; }
   
+  var grid = data.grid;
   var start = [data.startRow, data.startCol];
   var been = new Grid(grid.size);
   var coords = [];
@@ -1036,18 +1036,13 @@ function Player(isClient, grid, sdata) {
   }
   
   //Tail requires special handling.
+  this.grid = grid; //Temporary
   if (sdata.tail) 
     data.tail = new Tail(this, sdata.tail);
   else 
   {
     data.tail = new Tail(this);
-    data.tail.reposition(data.row, data.col);
-  }
-  
-  //Gets the next integer in positive or negative direction.
-  function nearestInteger(positive, val)
-  {
-    return positive ? Math.ceil(val) : Math.floor(val);
+    data.tail.reposition(calcRow(data), calcCol(data));
   }
   
   //Instance methods.
@@ -1063,12 +1058,29 @@ function Player(isClient, grid, sdata) {
       tail: data.tail.serialData()
     };
   }
+  
   //Read-only Properties.
-  defineAccessorProperties(this, data, "currentHeading", "dead", "name", "num", "posX", "posY", "tail");
+  defineAccessorProperties(this, data, "currentHeading", "dead", "name", "num", "posX", "posY", "grid", "tail");
   Object.defineProperties(this, {
-    row: defineGetter(function() { return nearestInteger(data.currentHeading === 2 /*DOWN*/, data.posY / CELL_WIDTH); }),
-    col: defineGetter(function() { return nearestInteger(data.currentHeading === 1 /*RIGHT*/, data.posX / CELL_WIDTH); })
+    row: defineGetter(function() { return calcRow(data); }),
+    col: defineGetter(function() { return calcCol(data); })
   });
+}
+
+//Gets the next integer in positive or negative direction.
+function nearestInteger(positive, val)
+{
+  return positive ? Math.ceil(val) : Math.floor(val);
+}
+
+function calcRow(data)
+{
+  return nearestInteger(data.currentHeading === 2 /*DOWN*/, data.posY / CELL_WIDTH);
+}
+
+function calcCol(data)
+{
+  return nearestInteger(data.currentHeading === 1 /*RIGHT*/, data.posX / CELL_WIDTH);
 }
 
 //Instance methods
@@ -1129,7 +1141,7 @@ function move(data)
   if (data.grid.get(row, col) === this)
   {
     //Safe zone!
-    this.tail.fillTail(data.grid);
+    this.tail.fillTail();
     this.tail.reposition(row, col);
   }
   //If we are completely in a new cell (not in our safe zone), we add to the tail.

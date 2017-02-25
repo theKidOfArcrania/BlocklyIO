@@ -170,8 +170,8 @@ $(function() {
           removing[i] = true;
         
         //Remove players with collisons...
-        if (i !== j && squaresIntersect(players[i].startX, players[j].startX) &&
-          squaresIntersect(players[i].startY, players[j].startY))
+        if (i !== j && squaresIntersect(players[i].posX, players[j].posX) &&
+          squaresIntersect(players[i].posY, players[j].posY))
         {
           //...if one player is own his own territory, the other is out.
           if (grid.get(players[i].row, players[i].col) === players[i])
@@ -239,10 +239,10 @@ $(function() {
     var xDest = player.col * CELL_WIDTH;
     var yDest = player.row * CELL_WIDTH;
     
-    if (player.startX === xDest)
-      return Math.abs(player.startY - yDest);
+    if (player.posX === xDest)
+      return Math.abs(player.posY - yDest);
     else
-      return Math.abs(player.startX - xDest);
+      return Math.abs(player.posX - xDest);
   }
   
   //Thanks to https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/random
@@ -463,7 +463,6 @@ $(function() {
     ctx.fillText(user.name, 5, CELL_WIDTH - 5);
     
     zoom = 1 / (lagPortion + 1); //Zoom goes from 1 to .5, decreasing as portion goes up. TODO: maybe can modify this?
-    console.log(zoom);
     
     //Draw filled bar.
     ctx.fillStyle = "rgba(180, 180, 180, .3)";
