@@ -23,6 +23,17 @@ function verifyRange()
   }
 }
 
+Color.prototype.interpolateToString = function(color, amount)
+{
+  var rgbThis = hslToRgb(this.hue, this.sat, this.lum);
+  var rgbThat = hslToRgb(color.hue, color.sat, color.lum);
+  var rgb = [];
+  
+  for (var i = 0; i < 3; i++)
+    rgb[i] = Math.floor((rgbThat[i] - rgbThis[i]) * amount + rgbThis[i]);
+  return {rgbString: function() {return 'rgb(' + rgb[0] + ', ' + rgb[1] + ', ' + rgb[2] + ')'}};
+}
+
 Color.prototype.deriveLumination = function(amount)
 {
   var lum = this.lum + amount;

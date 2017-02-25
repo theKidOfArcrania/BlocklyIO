@@ -24,6 +24,17 @@ function verifyRange()
   }
 }
 
+Color.prototype.interpolateToString = function(color, amount)
+{
+  var rgbThis = hslToRgb(this.hue, this.sat, this.lum);
+  var rgbThat = hslToRgb(color.hue, color.sat, color.lum);
+  var rgb = [];
+  
+  for (var i = 0; i < 3; i++)
+    rgb[i] = Math.floor((rgbThat[i] - rgbThis[i]) * amount + rgbThis[i]);
+  return {rgbString: function() {return 'rgb(' + rgb[0] + ', ' + rgb[1] + ', ' + rgb[2] + ')'}};
+}
+
 Color.prototype.deriveLumination = function(amount)
 {
   var lum = this.lum + amount;
@@ -87,6 +98,7 @@ module.exports = Color;
 },{}],2:[function(require,module,exports){
 var Player = require("./player.js");
 var Grid = require("./grid.js");
+var Color = require("./color.js");
  
 /**
  * Provides requestAnimationFrame in a cross browser way.
@@ -196,6 +208,7 @@ $(function() {
   var userPortion = 0;
   var lagPortion = 0;
   var portionSpeed = 0;
+  var zoom = 1;
   
   //TODO: current player index
   var user = players[0];
@@ -313,10 +326,10 @@ $(function() {
   
   function centerOnPlayer(player, pos)
   {
-    var xOff = Math.floor(player.posX - (gameWidth - CELL_WIDTH) / 2);
-    var yOff = Math.floor(player.posY - (gameHeight - CELL_WIDTH) / 2);
-    pos[0] = Math.max(Math.min(xOff, grid.size * CELL_WIDTH + BORDER_WIDTH * 2 - gameWidth), 0);
-    pos[1] = Math.max(Math.min(yOff, grid.size * CELL_WIDTH + BORDER_WIDTH * 2 - gameHeight), 0);
+    var xOff = Math.floor(player.posX - (gameWidth / zoom - CELL_WIDTH) / 2);
+    var yOff = Math.floor(player.posY - (gameHeight / zoom - CELL_WIDTH) / 2);
+    pos[0] = Math.max(Math.min(xOff, grid.size * CELL_WIDTH + BORDER_WIDTH * 2 - gameWidth / zoom), 0);
+    pos[1] = Math.max(Math.min(yOff, grid.size * CELL_WIDTH + BORDER_WIDTH * 2 - gameHeight / zoom), 0);
   }
   
   function area(player)
@@ -392,10 +405,13 @@ $(function() {
     //paintGridLines();
     
     //Get viewing limits
-    var minRow = Math.max(Math.floor((offset[1] - BORDER_WIDTH) / CELL_WIDTH), 0); 
-    var minCol = Math.max(Math.floor((offset[0] - BORDER_WIDTH) / CELL_WIDTH), 0); 
-    var maxRow = Math.min(Math.ceil((offset[1] + gameHeight) / CELL_WIDTH), grid.size); 
-    var maxCol = Math.min(Math.ceil((offset[0] + gameWidth) / CELL_WIDTH), grid.size); 
+    var offsetX = (offset[0] - BORDER_WIDTH);
+    var offsetY = (offset[1] - BORDER_WIDTH);
+    
+    var minRow = Math.max(Math.floor(offsetY / CELL_WIDTH), 0); 
+    var minCol = Math.max(Math.floor(offsetX / CELL_WIDTH), 0); 
+    var maxRow = Math.min(Math.ceil((offsetY + gameHeight / zoom) / CELL_WIDTH), grid.size); 
+    var maxCol = Math.min(Math.ceil((offsetX + gameWidth / zoom) / CELL_WIDTH), grid.size); 
       
     //Paint occupied areas. (and fading ones).
     for (var r = minRow; r < maxRow; r++)
@@ -406,13 +422,16 @@ $(function() {
         var x = c * CELL_WIDTH, y = r * CELL_WIDTH, baseColor, shadowColor;
         
         var animateSpec = animateGrid.get(r, c);
+        var adjust = 1;
         if (!animateOff && animateSpec)
         {
           if (animateSpec.before) //fading animation
           {
-            var alpha = 1 - (animateSpec.frame / ANIMATE_FRAMES);
-            baseColor = animateSpec.before.baseColor.deriveAlpha(alpha);
-            shadowColor = animateSpec.before.shadowColor.deriveAlpha(alpha);
+            var frac = (animateSpec.frame / ANIMATE_FRAMES);
+            var back = new Color(.58, .41, .92, 1);
+            baseColor = animateSpec.before.baseColor.interpolateToString(back, frac);
+            shadowColor = animateSpec.before.shadowColor.interpolateToString(back, frac);
+            adjust = 0;
           }
           else
             continue;
@@ -430,11 +449,12 @@ $(function() {
         var bottomEmpty = !bottomAnimate || (bottomAnimate.after && bottomAnimate.before);
         if (hasBottom && ((!!bottomAnimate ^ !!animateSpec) || bottomEmpty))
         {
+          
           ctx.fillStyle = shadowColor.rgbString();
-          ctx.fillRect(x, y + CELL_WIDTH, CELL_WIDTH, SHADOW_OFFSET);
+          ctx.fillRect(x, y + CELL_WIDTH + 1, CELL_WIDTH + 1, SHADOW_OFFSET);
         }
         ctx.fillStyle = baseColor.rgbString();
-        ctx.fillRect(x, y, CELL_WIDTH, CELL_WIDTH);
+        ctx.fillRect(x, y, CELL_WIDTH + 1, CELL_WIDTH + 1);
       }
     }
     
@@ -462,9 +482,9 @@ $(function() {
             baseColor = animateSpec.after.baseColor.deriveLumination(-(offsetBounce / DROP_HEIGHT) * .1);
             
             ctx.fillStyle = shadowColor.rgbString();
-            ctx.fillRect(x, y + SHADOW_OFFSET, CELL_WIDTH, CELL_WIDTH);
+            ctx.fillRect(x, y + CELL_WIDTH, CELL_WIDTH, SHADOW_OFFSET);
             ctx.fillStyle = baseColor.rgbString();
-            ctx.fillRect(x, y, CELL_WIDTH, CELL_WIDTH);
+            ctx.fillRect(x, y, CELL_WIDTH + 1, CELL_WIDTH + 1);
           }
           
           animateSpec.frame++;
@@ -507,12 +527,17 @@ $(function() {
     ctx.fillStyle = 'whitesmoke';
     ctx.fillRect(0, 0, canvasWidth, canvasHeight);
     
-    //Draw the grid items.
+    //Move grid to viewport as said with the offsets, below the stats
     ctx.save();
+    ctx.translate(0, BAR_HEIGHT);
     ctx.beginPath();
-    ctx.translate(-offset[0] + BORDER_WIDTH, -offset[1] + BORDER_WIDTH + BAR_HEIGHT);
-    ctx.rect(offset[0] - BORDER_WIDTH, offset[1] - BORDER_WIDTH, canvasWidth, canvasHeight);
+    ctx.rect(0, 0, gameWidth, gameHeight);
     ctx.clip();
+    
+    //Zoom in/out based on player stats.
+    ctx.scale(zoom, zoom);
+    ctx.translate(-offset[0] + BORDER_WIDTH, -offset[1] + BORDER_WIDTH);
+    
     paintGrid();
     players.forEach(function (p) {
       var fr = newPlayerFrames[p.num] || 0;
@@ -521,8 +546,6 @@ $(function() {
       else
         p.render(ctx);
     });
-    
-    
     
     //Reset transform to paint fixed UI elements
     ctx.restore();
@@ -536,6 +559,8 @@ $(function() {
     ctx.font = "24px Changa";
     barOffset = ctx.measureText(user.name).width + 10;
     ctx.fillText(user.name, 5, CELL_WIDTH - 5);
+    
+    zoom = .0014 / lagPortion;
     
     //Draw filled bar.
     ctx.fillStyle = "rgba(180, 180, 180, .3)";
@@ -591,7 +616,7 @@ $(function() {
   });
 });
 
-},{"./grid.js":3,"./player.js":4}],3:[function(require,module,exports){
+},{"./color.js":1,"./grid.js":3,"./player.js":4}],3:[function(require,module,exports){
 function Grid(size, changeCallback)
 {
   var grid = new Array(size);
@@ -1027,7 +1052,16 @@ function Player(isClient, grid, sdata) {
   //Instance methods.
   this.move = move.bind(this, data);
   this.die = function() {data.dead = true;};
-  
+  this.serialData = function() {
+    return {
+      num: data.num,
+      name: data.name,
+      posX: data.posX,
+      posY: data.posY,
+      currentHeading: data.currentHeading,
+      tail: data.tail.serialData()
+    };
+  }
   //Read-only Properties.
   defineAccessorProperties(this, data, "currentHeading", "dead", "name", "num", "posX", "posY", "tail");
   Object.defineProperties(this, {

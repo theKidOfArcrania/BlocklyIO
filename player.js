@@ -386,7 +386,16 @@ function Player(isClient, grid, sdata) {
   //Instance methods.
   this.move = move.bind(this, data);
   this.die = function() {data.dead = true;};
-  
+  this.serialData = function() {
+    return {
+      num: data.num,
+      name: data.name,
+      posX: data.posX,
+      posY: data.posY,
+      currentHeading: data.currentHeading,
+      tail: data.tail.serialData()
+    };
+  }
   //Read-only Properties.
   defineAccessorProperties(this, data, "currentHeading", "dead", "name", "num", "posX", "posY", "tail");
   Object.defineProperties(this, {
