@@ -560,7 +560,8 @@ $(function() {
     barOffset = ctx.measureText(user.name).width + 10;
     ctx.fillText(user.name, 5, CELL_WIDTH - 5);
     
-    zoom = .0014 / lagPortion;
+    zoom = 1 / (lagPortion + 1); //Zoom goes from 1 to .5, decreasing as portion goes up. TODO: maybe can modify this?
+    console.log(zoom);
     
     //Draw filled bar.
     ctx.fillStyle = "rgba(180, 180, 180, .3)";
