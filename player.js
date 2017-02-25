@@ -342,7 +342,6 @@ function hitsTail(data, other)
     !!(data.tailGrid[other.row] && data.tailGrid[other.row][other.col]);
 }
 
-var CELL_WIDTH = 40;
 var SPEED = 5;
 var SHADOW_OFFSET = 10;
 
@@ -391,7 +390,7 @@ function Player(isClient, grid, sdata) {
       currentHeading: data.currentHeading,
       tail: data.tail.serialData()
     };
-  }
+  };
   
   //Read-only Properties.
   defineAccessorProperties(this, data, "currentHeading", "dead", "name", "num", "posX", "posY", "grid", "tail");
@@ -431,16 +430,16 @@ Player.prototype.render = function(ctx, fade)
   var mid = CELL_WIDTH / 2;
   var grd = ctx.createRadialGradient(this.posX + mid, this.posY + mid - SHADOW_OFFSET, 1,
             this.posX + mid, this.posY + mid - SHADOW_OFFSET, CELL_WIDTH);
-  grd.addColorStop(0, this.baseColor.deriveAlpha(fade).rgbString());
-  grd.addColorStop(1, "white");
+  grd.addColorStop(0, this.baseColor.rgbString().deriveAlpha(fade));
+  grd.addColorStop(1, new Color(0, 0, 1, fade).rgbString());
   ctx.fillStyle = grd;
-  ctx.fillRect(this.posX, this.posY - SHADOW_OFFSET, CELL_WIDTH, CELL_WIDTH);
+  ctx.fillRect(this.posX - 1, this.posY - SHADOW_OFFSET, CELL_WIDTH + 2, CELL_WIDTH);
   
   //Render name
   ctx.fillStyle = this.shadowColor.deriveAlpha(fade).rgbString();
   ctx.textAlign = "center";
   
-  var yoff = -SHADOW_OFFSET * 2
+  var yoff = -SHADOW_OFFSET * 2;
   if (this.row === 0)
     yoff = SHADOW_OFFSET * 2 + CELL_WIDTH;
   ctx.font = "18px Changa";

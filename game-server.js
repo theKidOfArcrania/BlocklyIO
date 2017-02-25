@@ -1,12 +1,17 @@
 var GRID_SIZE = 80;
 var CELL_WIDTH = 40;
+var MAX_PLAYERS = 255;
+
+var Grid = require("./grid.js");
 var Player = require("./player.js");
+var core = require("./game-core.js");
 
 function Game(id)
 {
-  
+  var nextInd = 0;
   var players = [];
   var newPlayers = [];
+  var newPlayerFrames = [];
   var frame = 0;
   
   var filled = 0;
@@ -24,6 +29,9 @@ function Game(id)
   this.id = id;
   
   this.addPlayer = function(client, name) {
+    if (players.length >= MAX_PLAYERS)
+      return false;
+    
     var start = findEmpty(grid);
     if (!start)
       return false;
@@ -31,20 +39,127 @@ function Game(id)
     var params = {
       posX: start.col * CELL_WIDTH,
       posY: start.row * CELL_WIDTH,
-      currentHeading: getRandomInt(0, 4),
+      currentHeading: Math.floor(Math.random() * 4),
       name: name,
-      num: players.length
-    }
+      num: nextInd
+    };
     
     var p = new Player(false, grid, params);
     p.client = client;
-    player.push(p);
-    newPlayer.push(p);
+    players.push(p);
+    newPlayers.push(p);
+    newPlayerFrames.push(p);
+    nextInd++;
+    core.initPlayer(p);
     
+    var splayers = players.map(function(val) {return val.serialData();});
+    client.emit("game", {
+      "num": p.num,
+      "gameid": id,
+      "frame": frame,
+      "players": splayers,
+      "grid": gridSerialData(grid, players)
+    });
     
-    client.emit("game", {players, })
+    //TODO: limit number of requests per frame.
+    client.on("requestFrame", function (fn) {
+      var splayers = players.map(function(val) {return val.serialData();});
+      fn({
+        "num": p.num,
+        "gameid": id,
+        "frame": frame,
+        "players": splayers,
+        "grid": gridSerialData(grid, players)
+      });
+    });
+    client.on("frame", function(data, errorHan){
+      if (typeof data === "function")
+      {
+        errorHan(false, "No data supplied.");
+        return;
+      }
+      
+      if (typeof errorHan !== "function")
+        errorHan = function() {};
+      
+      if (!data)
+        errorHan(false, "No data supplied.");
+      else if (!checkInt(data.frame, 0, Infinity))
+        errorHan(false, "Requires a valid non-negative frame integer.");
+      else if (data.frame < frame)
+        errorHan(false, "Late frame received.");
+      else if (data.frame > frame)
+        errorHan(false, "Invalid frame received.");
+      else
+      {
+        if (data.heading)
+        {
+          if (checkInt(data.heading, 0, 4))
+          {
+            p.heading = data.heading;
+            errorHan(true);
+          }
+          else
+            errorHan(false, "New heading must be an integer of range [0, 4).");
+        }
+      }
+    });
     return true;
+  };
+  
+  
+  this.tickFrame = function() {
+    var snews = newPlayers.map(function(val) {return val.serialData();});
+    var moves = players.map(function(val) {return {heading: val.heading};});
+    
+    var data = {moves: moves};
+    if (snews.length > 0)
+    {
+      data.newPlayers = snews;
+      newPlayers = [];
+    }
+    
+    players.forEach(function(val) {val.client.emit("notifyFrame", data)});
+    
+    frame++;
+    update();
+  };
+  
+  function update()
+  {
+    var dead = [];
+    core.updateFrame(grid, players, newPlayerFrames, dead);
+    dead.forEach(function(val) { val.client.disconnect(true); });
   }
+}
+
+function checkInt(value, min, max)
+{
+  if (typeof value !== "number")
+    return false;
+  if (value < min || value >= max)
+    return false;
+  if (Math.floor(value) !== value)
+    return false;
+  
+  return true;
+}
+
+function gridSerialData(grid, players)
+{
+  var buff = Buffer.alloc(grid.size * grid.size);
+  
+  var numToIndex = new Array(players[players.length - 1].num + 1);
+  for (var i = 0; i < players.length; i++)
+    numToIndex[players[i].num] = i + 1;
+  
+  for (var r = 0; r < grid.size; r++)
+    for (var c = 0; c < grid.size; c++)
+    {
+      var ele = grid.get(r, c);
+      buff[r * grid.size + c] = ele ? numToIndex[ele.num] : 0;
+    }
+  return buff;
 }
 
 function findEmpty(grid)
