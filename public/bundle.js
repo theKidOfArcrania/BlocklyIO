@@ -205,6 +205,7 @@ $(function() {
   var animateTo = [0, 0];
   var offset = [0, 0];
   
+  var kills = 0;
   var userPortion = 0;
   var lagPortion = 0;
   var portionSpeed = 0;
@@ -254,8 +255,17 @@ $(function() {
       return !val.dead;
     });
     
+    
+    
     //Remove players with collisions.
     var removing = [];
+    
+    function addKill(killer, other)
+    {
+      if (players[killer] === user && !removing[other] && killer !== other)
+        kills++;
+    }
+    
     for (var i = 0; i < players.length; i++)
     {
       for (var j = i; j < players.length; j++)
@@ -263,9 +273,15 @@ $(function() {
         
         //Remove those players when other players have hit their tail.
         if (!removing[j] && players[j].tail.hitsTail(players[i]))
+        {
+          addKill(i, j);
           removing[j] = true;
+        }
         if (!removing[i] && players[i].tail.hitsTail(players[j]))
+        {
+          addKill(j, i);
           removing[i] = true;
+        }
         
         //Remove players with collisons...
         if (i !== j && squaresIntersect(players[i].posX, players[j].posX) &&
@@ -273,9 +289,15 @@ $(function() {
         {
           //...if one player is own his own territory, the other is out.
           if (grid.get(players[i].row, players[i].col) === players[i])
+          {
+            addKill(i, j);
             removing[j] = true;
+          }
           else if (grid.get(players[j].row, players[j].col) === players[j])
+          {
+            addKill(j, i);
             removing[i] = true;
+          }
           else
           {
             //...otherwise, the one that sustains most of the collision will be removed.
@@ -283,11 +305,21 @@ $(function() {
             var areaJ = area(players[j]);
             
             if (areaI === areaJ)
+            {
+              addKill(i, j);
+              addKill(j, i);
               removing[i] = removing[j] = true;
+            }
             else if (areaI > areaJ)
+            {
+              addKill(j, i);
               removing[i] = true;
+            }
             else
+            {
+              addKill(i, j);
               removing[j] = true;
+            }
           }
         }
       }
@@ -557,7 +589,7 @@ $(function() {
     var barOffset;
     ctx.fillStyle = "white";
     ctx.font = "24px Changa";
-    barOffset = ctx.measureText(user.name).width + 10;
+    barOffset = ctx.measureText(user.name).width + 20;
     ctx.fillText(user.name, 5, CELL_WIDTH - 5);
     
     zoom = 1 / (lagPortion + 1); //Zoom goes from 1 to .5, decreasing as portion goes up. TODO: maybe can modify this?
@@ -583,6 +615,25 @@ $(function() {
       console.log("You died!");
       //return;
     }
+    
+    //Number of kills
+    var killsText = "Kills: " + kills;
+    var killsOffset = 20 + BAR_WIDTH + barOffset;
+    ctx.fillText(killsText, killsOffset, CELL_WIDTH - 5);
+    
+    //Calcuate rank
+    var sorted = [];
+    players.forEach(function(val) {
+      sorted.push({player: val, portion: playerPortion[val.num]});
+    });
+    sorted.sort(function(a, b) {
+      if (a.portion === b.portion) return a.player.num - b.player.num;
+      else return b.portion - a.portion;
+    });
+    
+    var rank = sorted.findIndex(function(val) {return val.player === user});
+    ctx.fillText("Rank: " + (rank === -1 ? "--" : rank + 1) + " of " + sorted.length, 
+      ctx.measureText(killsText).width + killsOffset + 20, CELL_WIDTH - 5);
     
     //TODO: sync each loop with server. (server will give frame count.)
     frameCount++;
