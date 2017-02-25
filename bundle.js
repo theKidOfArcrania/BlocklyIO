@@ -24,6 +24,17 @@ function verifyRange()
   }
 }
 
+Color.prototype.interpolateToString = function(color, amount)
+{
+  var rgbThis = hslToRgb(this.hue, this.sat, this.lum);
+  var rgbThat = hslToRgb(color.hue, color.sat, color.lum);
+  var rgb = [];
+  
+  for (var i = 0; i < 3; i++)
+    rgb[i] = Math.floor((rgbThat[i] - rgbThis[i]) * amount + rgbThis[i]);
+  return {rgbString: function() {return 'rgb(' + rgb[0] + ', ' + rgb[1] + ', ' + rgb[2] + ')'}};
+}
+
 Color.prototype.deriveLumination = function(amount)
 {
   var lum = this.lum + amount;
@@ -87,6 +98,7 @@ module.exports = Color;
 },{}],2:[function(require,module,exports){
 var Player = require("./player.js");
 var Grid = require("./grid.js");
+var Color = require("./color.js");
  
 /**
  * Provides requestAnimationFrame in a cross browser way.
@@ -193,9 +205,11 @@ $(function() {
   var animateTo = [0, 0];
   var offset = [0, 0];
   
+  var kills = 0;
   var userPortion = 0;
   var lagPortion = 0;
   var portionSpeed = 0;
+  var zoom = 1;
   
   //TODO: current player index
   var user = players[0];
@@ -241,8 +255,17 @@ $(function() {
       return !val.dead;
     });
     
+    
+    
     //Remove players with collisions.
     var removing = [];
+    
+    function addKill(killer, other)
+    {
+      if (players[killer] === user && !removing[other] && killer !== other)
+        kills++;
+    }
+    
     for (var i = 0; i < players.length; i++)
     {
       for (var j = i; j < players.length; j++)
@@ -250,19 +273,31 @@ $(function() {
         
         //Remove those players when other players have hit their tail.
         if (!removing[j] && players[j].tail.hitsTail(players[i]))
+        {
+          addKill(i, j);
           removing[j] = true;
+        }
         if (!removing[i] && players[i].tail.hitsTail(players[j]))
+        {
+          addKill(j, i);
           removing[i] = true;
+        }
         
         //Remove players with collisons...
-        if (i !== j && squaresIntersect(players[i].startX, players[j].startX) &&
-          squaresIntersect(players[i].startY, players[j].startY))
+        if (i !== j && squaresIntersect(players[i].posX, players[j].posX) &&
+          squaresIntersect(players[i].posY, players[j].posY))
         {
           //...if one player is own his own territory, the other is out.
           if (grid.get(players[i].row, players[i].col) === players[i])
+          {
+            addKill(i, j);
             removing[j] = true;
+          }
           else if (grid.get(players[j].row, players[j].col) === players[j])
+          {
+            addKill(j, i);
             removing[i] = true;
+          }
           else
           {
             //...otherwise, the one that sustains most of the collision will be removed.
@@ -270,11 +305,21 @@ $(function() {
             var areaJ = area(players[j]);
             
             if (areaI === areaJ)
+            {
+              addKill(i, j);
+              addKill(j, i);
               removing[i] = removing[j] = true;
+            }
             else if (areaI > areaJ)
+            {
+              addKill(j, i);
               removing[i] = true;
+            }
             else
+            {
+              addKill(i, j);
               removing[j] = true;
+            }
           }
         }
       }
@@ -313,10 +358,10 @@ $(function() {
   
   function centerOnPlayer(player, pos)
   {
-    var xOff = Math.floor(player.posX - (gameWidth - CELL_WIDTH) / 2);
-    var yOff = Math.floor(player.posY - (gameHeight - CELL_WIDTH) / 2);
-    pos[0] = Math.max(Math.min(xOff, grid.size * CELL_WIDTH + BORDER_WIDTH * 2 - gameWidth), 0);
-    pos[1] = Math.max(Math.min(yOff, grid.size * CELL_WIDTH + BORDER_WIDTH * 2 - gameHeight), 0);
+    var xOff = Math.floor(player.posX - (gameWidth / zoom - CELL_WIDTH) / 2);
+    var yOff = Math.floor(player.posY - (gameHeight / zoom - CELL_WIDTH) / 2);
+    pos[0] = Math.max(Math.min(xOff, grid.size * CELL_WIDTH + BORDER_WIDTH * 2 - gameWidth / zoom), 0);
+    pos[1] = Math.max(Math.min(yOff, grid.size * CELL_WIDTH + BORDER_WIDTH * 2 - gameHeight / zoom), 0);
   }
   
   function area(player)
@@ -324,10 +369,10 @@ $(function() {
     var xDest = player.col * CELL_WIDTH;
     var yDest = player.row * CELL_WIDTH;
     
-    if (player.startX === xDest)
-      return Math.abs(player.startY - yDest);
+    if (player.posX === xDest)
+      return Math.abs(player.posY - yDest);
     else
-      return Math.abs(player.startX - xDest);
+      return Math.abs(player.posX - xDest);
   }
   
   //Thanks to https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/random
@@ -392,10 +437,13 @@ $(function() {
     //paintGridLines();
     
     //Get viewing limits
-    var minRow = Math.max(Math.floor((offset[1] - BORDER_WIDTH) / CELL_WIDTH), 0); 
-    var minCol = Math.max(Math.floor((offset[0] - BORDER_WIDTH) / CELL_WIDTH), 0); 
-    var maxRow = Math.min(Math.ceil((offset[1] + gameHeight) / CELL_WIDTH), grid.size); 
-    var maxCol = Math.min(Math.ceil((offset[0] + gameWidth) / CELL_WIDTH), grid.size); 
+    var offsetX = (offset[0] - BORDER_WIDTH);
+    var offsetY = (offset[1] - BORDER_WIDTH);
+    
+    var minRow = Math.max(Math.floor(offsetY / CELL_WIDTH), 0); 
+    var minCol = Math.max(Math.floor(offsetX / CELL_WIDTH), 0); 
+    var maxRow = Math.min(Math.ceil((offsetY + gameHeight / zoom) / CELL_WIDTH), grid.size); 
+    var maxCol = Math.min(Math.ceil((offsetX + gameWidth / zoom) / CELL_WIDTH), grid.size); 
       
     //Paint occupied areas. (and fading ones).
     for (var r = minRow; r < maxRow; r++)
@@ -406,13 +454,16 @@ $(function() {
         var x = c * CELL_WIDTH, y = r * CELL_WIDTH, baseColor, shadowColor;
         
         var animateSpec = animateGrid.get(r, c);
+        var adjust = 1;
         if (!animateOff && animateSpec)
         {
           if (animateSpec.before) //fading animation
           {
-            var alpha = 1 - (animateSpec.frame / ANIMATE_FRAMES);
-            baseColor = animateSpec.before.baseColor.deriveAlpha(alpha);
-            shadowColor = animateSpec.before.shadowColor.deriveAlpha(alpha);
+            var frac = (animateSpec.frame / ANIMATE_FRAMES);
+            var back = new Color(.58, .41, .92, 1);
+            baseColor = animateSpec.before.baseColor.interpolateToString(back, frac);
+            shadowColor = animateSpec.before.shadowColor.interpolateToString(back, frac);
+            adjust = 0;
           }
           else
             continue;
@@ -430,11 +481,12 @@ $(function() {
         var bottomEmpty = !bottomAnimate || (bottomAnimate.after && bottomAnimate.before);
         if (hasBottom && ((!!bottomAnimate ^ !!animateSpec) || bottomEmpty))
         {
+          
           ctx.fillStyle = shadowColor.rgbString();
-          ctx.fillRect(x, y + CELL_WIDTH, CELL_WIDTH, SHADOW_OFFSET);
+          ctx.fillRect(x, y + CELL_WIDTH + 1, CELL_WIDTH + 1, SHADOW_OFFSET);
         }
         ctx.fillStyle = baseColor.rgbString();
-        ctx.fillRect(x, y, CELL_WIDTH, CELL_WIDTH);
+        ctx.fillRect(x, y, CELL_WIDTH + 1, CELL_WIDTH + 1);
       }
     }
     
@@ -462,9 +514,9 @@ $(function() {
             baseColor = animateSpec.after.baseColor.deriveLumination(-(offsetBounce / DROP_HEIGHT) * .1);
             
             ctx.fillStyle = shadowColor.rgbString();
-            ctx.fillRect(x, y + SHADOW_OFFSET, CELL_WIDTH, CELL_WIDTH);
+            ctx.fillRect(x, y + CELL_WIDTH, CELL_WIDTH, SHADOW_OFFSET);
             ctx.fillStyle = baseColor.rgbString();
-            ctx.fillRect(x, y, CELL_WIDTH, CELL_WIDTH);
+            ctx.fillRect(x, y, CELL_WIDTH + 1, CELL_WIDTH + 1);
           }
           
           animateSpec.frame++;
@@ -507,12 +559,17 @@ $(function() {
     ctx.fillStyle = 'whitesmoke';
     ctx.fillRect(0, 0, canvasWidth, canvasHeight);
     
-    //Draw the grid items.
+    //Move grid to viewport as said with the offsets, below the stats
     ctx.save();
+    ctx.translate(0, BAR_HEIGHT);
     ctx.beginPath();
-    ctx.translate(-offset[0] + BORDER_WIDTH, -offset[1] + BORDER_WIDTH + BAR_HEIGHT);
-    ctx.rect(offset[0] - BORDER_WIDTH, offset[1] - BORDER_WIDTH, canvasWidth, canvasHeight);
+    ctx.rect(0, 0, gameWidth, gameHeight);
     ctx.clip();
+    
+    //Zoom in/out based on player stats.
+    ctx.scale(zoom, zoom);
+    ctx.translate(-offset[0] + BORDER_WIDTH, -offset[1] + BORDER_WIDTH);
+    
     paintGrid();
     players.forEach(function (p) {
       var fr = newPlayerFrames[p.num] || 0;
@@ -521,8 +578,6 @@ $(function() {
       else
         p.render(ctx);
     });
-    
-    
     
     //Reset transform to paint fixed UI elements
     ctx.restore();
@@ -533,9 +588,11 @@ $(function() {
     
     var barOffset;
     ctx.fillStyle = "white";
-    ctx.font = "24px Arial";
-    barOffset = ctx.measureText(user.name).width + 10;
+    ctx.font = "24px Changa";
+    barOffset = ctx.measureText(user.name).width + 20;
     ctx.fillText(user.name, 5, CELL_WIDTH - 5);
+    
+    zoom = 1 / (lagPortion + 1); //Zoom goes from 1 to .5, decreasing as portion goes up. TODO: maybe can modify this?
     
     //Draw filled bar.
     ctx.fillStyle = "rgba(180, 180, 180, .3)";
@@ -549,7 +606,7 @@ $(function() {
     
     //Percentage
     ctx.fillStyle = "white";
-    ctx.font = "18px Arial";
+    ctx.font = "18px Changa";
     ctx.fillText((lagPortion * 100).toFixed(3) + "%", 5 + barOffset, CELL_WIDTH - 5);
     
     if (user.dead && !showedDead)
@@ -558,6 +615,25 @@ $(function() {
       console.log("You died!");
       //return;
     }
+    
+    //Number of kills
+    var killsText = "Kills: " + kills;
+    var killsOffset = 20 + BAR_WIDTH + barOffset;
+    ctx.fillText(killsText, killsOffset, CELL_WIDTH - 5);
+    
+    //Calcuate rank
+    var sorted = [];
+    players.forEach(function(val) {
+      sorted.push({player: val, portion: playerPortion[val.num]});
+    });
+    sorted.sort(function(a, b) {
+      if (a.portion === b.portion) return a.player.num - b.player.num;
+      else return b.portion - a.portion;
+    });
+    
+    var rank = sorted.findIndex(function(val) {return val.player === user});
+    ctx.fillText("Rank: " + (rank === -1 ? "--" : rank + 1) + " of " + sorted.length, 
+      ctx.measureText(killsText).width + killsOffset + 20, CELL_WIDTH - 5);
     
     //TODO: sync each loop with server. (server will give frame count.)
     frameCount++;
@@ -591,7 +667,7 @@ $(function() {
   });
 });
 
-},{"./grid.js":3,"./player.js":4}],3:[function(require,module,exports){
+},{"./color.js":1,"./grid.js":3,"./player.js":4}],3:[function(require,module,exports){
 function Grid(size, changeCallback)
 {
   var grid = new Array(size);
@@ -655,8 +731,6 @@ function defineInstanceMethods(thisobj, data /*, methods...*/)
   for (var i = 2; i < arguments.length; i++)
     thisobj[arguments[i].name] = arguments[i].bind(this, data);
 }
-
-
 
 function defineAccessorProperties(thisobj, data /*, names...*/)
 {
@@ -887,13 +961,14 @@ function fillTailRect(ctx, start, end)
 }
 
 //TODO: fade in colors using grid property-getters/setters
-function fillTail(data, grid)
+function fillTail(data)
 {
   if (data.tail.length === 0)
     return;
   
   function onTail(c) { return data.tailGrid[c[0]] && data.tailGrid[c[0]][c[1]]; }
   
+  var grid = data.grid;
   var start = [data.startRow, data.startCol];
   var been = new Grid(grid.size);
   var coords = [];
@@ -1012,30 +1087,51 @@ function Player(isClient, grid, sdata) {
   }
   
   //Tail requires special handling.
+  this.grid = grid; //Temporary
   if (sdata.tail) 
     data.tail = new Tail(this, sdata.tail);
   else 
   {
     data.tail = new Tail(this);
-    data.tail.reposition(data.row, data.col);
-  }
-  
-  //Gets the next integer in positive or negative direction.
-  function nearestInteger(positive, val)
-  {
-    return positive ? Math.ceil(val) : Math.floor(val);
+    data.tail.reposition(calcRow(data), calcCol(data));
   }
   
   //Instance methods.
   this.move = move.bind(this, data);
   this.die = function() {data.dead = true;};
+  this.serialData = function() {
+    return {
+      num: data.num,
+      name: data.name,
+      posX: data.posX,
+      posY: data.posY,
+      currentHeading: data.currentHeading,
+      tail: data.tail.serialData()
+    };
+  }
   
   //Read-only Properties.
-  defineAccessorProperties(this, data, "currentHeading", "dead", "name", "num", "posX", "posY", "tail");
+  defineAccessorProperties(this, data, "currentHeading", "dead", "name", "num", "posX", "posY", "grid", "tail");
   Object.defineProperties(this, {
-    row: defineGetter(function() { return nearestInteger(data.currentHeading === 2 /*DOWN*/, data.posY / CELL_WIDTH); }),
-    col: defineGetter(function() { return nearestInteger(data.currentHeading === 1 /*RIGHT*/, data.posX / CELL_WIDTH); })
+    row: defineGetter(function() { return calcRow(data); }),
+    col: defineGetter(function() { return calcCol(data); })
   });
+}
+
+//Gets the next integer in positive or negative direction.
+function nearestInteger(positive, val)
+{
+  return positive ? Math.ceil(val) : Math.floor(val);
+}
+
+function calcRow(data)
+{
+  return nearestInteger(data.currentHeading === 2 /*DOWN*/, data.posY / CELL_WIDTH);
+}
+
+function calcCol(data)
+{
+  return nearestInteger(data.currentHeading === 1 /*RIGHT*/, data.posX / CELL_WIDTH);
 }
 
 //Instance methods
@@ -1060,7 +1156,12 @@ Player.prototype.render = function(ctx, fade)
   //Render name
   ctx.fillStyle = this.shadowColor.deriveAlpha(fade).rgbString();
   ctx.textAlign = "center";
-  ctx.fillText(this.name, this.posX + CELL_WIDTH / 2, this.posY - SHADOW_OFFSET * 2);
+  
+  var yoff = -SHADOW_OFFSET * 2
+  if (this.row === 0)
+    yoff = SHADOW_OFFSET * 2 + CELL_WIDTH;
+  ctx.font = "18px Changa";
+  ctx.fillText(this.name, this.posX + CELL_WIDTH / 2, this.posY + yoff);
 };
 
 function move(data)
@@ -1091,7 +1192,7 @@ function move(data)
   if (data.grid.get(row, col) === this)
   {
     //Safe zone!
-    this.tail.fillTail(data.grid);
+    this.tail.fillTail();
     this.tail.reposition(row, col);
   }
   //If we are completely in a new cell (not in our safe zone), we add to the tail.
