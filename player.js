@@ -245,7 +245,6 @@ function fillTailRect(ctx, start, end)
   ctx.fillRect(x, y, width, height);
 }
 
-//TODO: fade in colors using grid property-getters/setters
 function fillTail(data)
 {
   if (data.tail.length === 0)
@@ -363,9 +362,14 @@ function Player(isClient, grid, sdata) {
   //Only need colors for client side.
   if (isClient)
   {
-    var hue = Math.random();
-    var base = new Color(hue, .8, .5);
-    this.baseColor = base;
+    var base;
+    if (sdata.base)
+      base = this.baseColor = Color.fromData(sdata.base);
+    else
+    {
+      var hue = Math.random();
+      this.baseColor = base = new Color(hue, .8, .5);
+    }
     this.shadowColor = base.deriveLumination(-.3);
     this.tailColor = base.deriveLumination(.2).deriveAlpha(.5);
   }
@@ -448,8 +452,10 @@ Player.prototype.render = function(ctx, fade)
   ctx.fillText(this.name, this.posX + CELL_WIDTH / 2, this.posY + yoff);
 };
 
+var moves = 0;
 function move(data)
 {
+  moves++;
   //Move to new position.
   var heading = this.heading;
   if (this.posX % CELL_WIDTH !== 0 || this.posY % CELL_WIDTH !== 0)

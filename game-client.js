@@ -47,7 +47,7 @@ $(document).keydown(function(e) {
   if (newHeading === user.currentHeading || ((newHeading % 2 === 0) ^ 
     (user.currentHeading % 2 === 0)))
   {
-    user.heading = newHeading;
+    //user.heading = newHeading;
     if (socket)
       socket.emit("frame", {
         frame: frame,
@@ -66,9 +66,10 @@ $(document).keydown(function(e) {
 
 $(function() {
   var grid = renderer.grid; 
+  var timeout = undefined;
   
   //Socket connection.
-  socket = require('socket.io-client')('localhost:8081');
+  socket = require('socket.io-client')('http://paper-io-thekidofarcrania.c9users.io:8081');
   socket.on('connect', function(){
     console.info("Connected to server.");
     socket.emit('hello', {
@@ -86,8 +87,13 @@ $(function() {
     frame = data.frame;
     renderer.reset();
     
+    
+    //Load colors.
+    var colors = data.colors || [];
+    
     //Load players.
     data.players.forEach(function(p) {
+      p.base = colors[p.num];
       var pl = new Player(true, grid, p);
       renderer.addPlayer(pl);
     });
@@ -103,11 +109,14 @@ $(function() {
         grid.set(r, c, ind === -1 ? null : renderer.getPlayer(ind));
       }
     
-    paintLoop();
+    renderer.paint();
     frame = data.frame;
   });
   
   socket.on('notifyFrame', function(data, fn) {
+    if (timeout != undefined)
+      clearTimeout(timeout);
+    
     if (data.frame - 1 !== frame)
     {
       console.error("Frames don't match up!");
@@ -129,11 +138,18 @@ $(function() {
       }
       
       data.moves.forEach(function(val, i) {
-        renderer.getPlayer(i).heading = val.heading;
+        var player = renderer.getPlayer(i);
+        if (!player) return;
+        if (val.left) player.die();
+        player.heading = val.heading;
       });
       
       paintLoop();
     });
+    timeout = setTimeout(function() {
+      console.warn("Server has timed-out. Disconnecting.");
+      socket.disconnect();
+    }, 1000);
     fn();
   });
   
@@ -151,8 +167,15 @@ $(function() {
     renderer.update();
     if (user.dead)
     {
-      if (deadFrames === 60) //One second of frames
+      if (timeout)
+        clearTimeout(timeout);
+      if (deadFrames === 120) //Two second of frames
       {
+        var before = renderer.allowAnimation;
+        renderer.allowAnimation = false;
+        renderer.update();
+        renderer.paint();
+        renderer.allowAnimation = before;
         deadFrames = 0;
         return;
       }

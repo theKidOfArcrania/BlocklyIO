@@ -14,6 +14,10 @@ function Color(h, s, l, a)
   });
 }
 
+Color.fromData = function(data) {
+  return new Color(data.hue, data.sat, data.lum, data.alpha);
+};
+
 function verifyRange()
 {
   for (var i = 0; i < arguments.length; i++)

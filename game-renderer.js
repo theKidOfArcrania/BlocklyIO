@@ -294,21 +294,26 @@ function paint(ctx)
 
 function paintDoubleBuff()
 {
-  paint(ctx);
-  //paint(offctx);
-  //ctx.drawImage(offscreenCanvas, 0, 0);
+  paint(offctx);
+  ctx.drawImage(offscreenCanvas, 0, 0);
 }
 
 function update() {
+  
   //Change grid offsets.
   for (var i = 0; i <= 1; i++)
   {
     if (animateTo[i] !== offset[i])
     {
-      var delta = animateTo[i] - offset[i];
-      var dir = Math.sign(delta);
-      var mag = Math.min(SPEED, Math.abs(delta));
-      offset[i] += dir * mag;
+      if (allowAnimation)
+      {
+        var delta = animateTo[i] - offset[i];
+        var dir = Math.sign(delta);
+        var mag = Math.min(SPEED, Math.abs(delta));
+        offset[i] += dir * mag;
+      }
+      else
+        offset[i] = animateTo[i];
     }
   }
   
@@ -319,10 +324,15 @@ function update() {
   
   if (lagPortion !== userPortion)
   {
-    delta = userPortion - lagPortion;
-    dir = Math.sign(delta);
-    mag = Math.min(Math.abs(portionSpeed), Math.abs(delta));
-    lagPortion += dir * mag;
+    if (allowAnimation)
+    {
+      delta = userPortion - lagPortion;
+      dir = Math.sign(delta);
+      mag = Math.min(Math.abs(portionSpeed), Math.abs(delta));
+      lagPortion += dir * mag;
+    }
+    else
+      lagPortion = userPortion;
   }
   
   //Zoom goes from 1 to .5, decreasing as portion goes up. TODO: maybe can modify this?
@@ -402,6 +412,7 @@ module.exports = exports = {
     playerPortion[player.num] = 0;
     return players.length - 1;
   },
+  //TODO: check index.
   getPlayer: function(ind) {
     return players[ind];
   },

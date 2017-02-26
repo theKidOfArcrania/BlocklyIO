@@ -1,15 +1,38 @@
 
-var Grid = require("./grid.js");
-var Player = require("./player.js");
-var core = require("./game-core.js");
-var consts = require("./game-consts.js");
+var Color = require("./color");
+var Grid = require("./grid");
+var Player = require("./player");
+var Gate = require("./gate");
+var core = require("./game-core");
+var consts = require("./game-consts");
 
 var GRID_SIZE = consts.GRID_SIZE;
 var CELL_WIDTH = consts.CELL_WIDTH;
 var MAX_PLAYERS = consts.MAX_PLAYERS;
 
+var HUES = [0, 10, 20, 25, 30, 35, 40, 45, 50, 60, 70, 100, 110, 120, 125, 130, 135, 140, 145, 150, 160, 170, 180, 190, 200, 210, 220].map(function(val) {return val / 240});
+var SATS = [192, 150, 100].map(function(val) {return val / 240});
+
+
+
 function Game(id)
 {
+  //Shuffle the hues.
+  for (var i = 0; i < HUES.length * 50; i++)
+  {
+    var a = Math.floor(Math.random() * HUES.length); 
+    var b = Math.floor(Math.random() * HUES.length); 
+    var tmp = HUES[a];
+    HUES[a] = HUES[b];
+    HUES[b] = tmp;
+  }
+  
+  var colors = new Array(SATS.length * HUES.length);
+  i = 0;
+  for (var s = 0; s < SATS.length; s++)
+    for (var h = 0; h < HUES.length; h++)
+      colors[i++] = new Color(HUES[h], SATS[s], .5, 1);
+  
   var nextInd = 0;
   var players = [];
   var newPlayers = [];
@@ -28,6 +51,9 @@ function Game(id)
   });
   
   this.id = id;
+  
+  //var frameGate = new Gate(1);
+  //var timeout = undefined;
   
   this.addPlayer = function(client, name) {
     if (players.length >= MAX_PLAYERS)
@@ -59,7 +85,8 @@ function Game(id)
       "gameid": id,
       "frame": frame,
       "players": splayers,
-      "grid": gridSerialData(grid, players)
+      "grid": gridSerialData(grid, players),
+      "colors": colors
     });
     //console.log(frame);
     //playerReady(p, frame);
@@ -76,7 +103,8 @@ function Game(id)
         "gameid": id,
         "frame": frame,
         "players": splayers,
-        "grid": gridSerialData(grid, players)
+        "grid": gridSerialData(grid, players),
+        "colors": colors
       });
       //playerReady(p, frame);
     });
@@ -101,8 +129,6 @@ function Game(id)
         errorHan(false, "Invalid frame received.");
       else
       {
-        if (data.frame < frame)
-          console.log(data.frame + " != " + frame);
         if (data.heading !== undefined)
         {
           if (checkInt(data.heading, 0, 4))
@@ -117,7 +143,8 @@ function Game(id)
     });
     
     client.on('disconnect', function() {
-      console.log(p.name + " left.")
+      p.disconnected = true;
+      console.log(p.name + " left.");
     });
     return true;
   };
@@ -144,9 +171,8 @@ function Game(id)
     //}else
     //  return;
     
-    //TODO: notify those that drop out.
     var snews = newPlayers.map(function(val) {return val.serialData();});
-    var moves = players.map(function(val) {return {heading: val.heading};});
+    var moves = players.map(function(val) {return {left: !!val.disconnected, heading: val.heading};});
     
     var data = {frame: frame + 1, moves: moves};
     if (snews.length > 0)
@@ -155,17 +181,15 @@ function Game(id)
       newPlayers = [];
     }
     
-    var waitFrame = frame + 1;
-    var splayers = players.map(function(val) {return val.serialData();});
-    var gridData = gridSerialData(grid, players);
     players.forEach(function(val) {
-      //val.client.emit("game", {
-      //  "num": val.num,
-      //  "gameid": id,
-      //  "frame": frame,
-      //  "players": splayers,
-      //  "grid": gridData
-      //});
+      // var splayers = players.map(function(val) {return val.serialData();});
+      // val.client.emit("game", {
+      //   "num": val.num,
+      //   "gameid": id,
+      //   "frame": frame,
+      //   "players": splayers,
+      //   "grid": gridSerialData(grid, players)
+      // });
       val.client.emit("notifyFrame", data, function() {
         //playerReady(val, waitFrame);
       });
@@ -173,12 +197,12 @@ function Game(id)
     
     frame++;
     setTimeout(update, 1);
-  };
+  }
   
   this.tickFrame = function() {
     //readyTick = true;
     tick();
-  }
+  };
   
   function update()
   {
@@ -186,7 +210,7 @@ function Game(id)
     core.updateFrame(grid, players, newPlayerFrames, dead);
     dead.forEach(function(val) { 
       console.log(val.name + " died.");
-      val.client.disconnect(true); 
+      //val.client.disconnect(true); 
     });
   }
 }

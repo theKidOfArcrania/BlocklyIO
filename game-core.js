@@ -1,6 +1,7 @@
 var ANIMATE_FRAMES = 24;
 var CELL_WIDTH = 40;
 
+//TODO: remove constants.
 exports.initPlayer = function(grid, player)
 {
   for (var dr = -1; dr <= 1; dr++)

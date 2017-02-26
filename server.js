@@ -7,7 +7,7 @@ var serve = serveStatic('public/', {'cacheControl': false});
 
 // Create server
 var server = http.createServer(function onRequest (req, res) {
-  serve(req, res, finalhandler(req, res))
+  serve(req, res, finalhandler(req, res));
 });
 
 // Listen

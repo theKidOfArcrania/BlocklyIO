@@ -11,7 +11,7 @@ var consts = {
   CELL_WIDTH: constant(40),
   SPEED: constant(5),
   BORDER_WIDTH: constant(20),
-  MAX_PLAYERS: constant(255)
+  MAX_PLAYERS: constant(81)
 };
 
 Object.defineProperties(module.exports, consts);
