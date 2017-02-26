@@ -368,6 +368,8 @@ $(function() {
     });
   });
   socket.on('game', function(data) {
+    if (timeout != undefined)
+      clearTimeout(timeout);
     //Initialize game.
     //TODO: display data.gameid --- game id #
     frame = data.frame;
@@ -435,7 +437,7 @@ $(function() {
     timeout = setTimeout(function() {
       console.warn("Server has timed-out. Disconnecting.");
       socket.disconnect();
-    }, 1000);
+    }, 5000);
     fn();
   });
   
@@ -9367,6 +9369,7 @@ var moves = 0;
 function move(data)
 {
   moves++;
+  //console.log(moves + ": " + this.heading);
   //Move to new position.
   var heading = this.heading;
   if (this.posX % CELL_WIDTH !== 0 || this.posY % CELL_WIDTH !== 0)

@@ -72,6 +72,7 @@ function Game(id)
     };
     
     var p = new Player(false, grid, params);
+    p.tmpHeading = params.currentHeading;
     p.client = client;
     players.push(p);
     newPlayers.push(p);
@@ -88,7 +89,6 @@ function Game(id)
       "grid": gridSerialData(grid, players),
       "colors": colors
     });
-    //console.log(frame);
     //playerReady(p, frame);
     console.log(p.name + " joined.");
     
@@ -133,7 +133,7 @@ function Game(id)
         {
           if (checkInt(data.heading, 0, 4))
           {
-            p.heading = data.heading;
+            p.tmpHeading = data.heading;
             errorHan(true);
           }
           else
@@ -172,7 +172,11 @@ function Game(id)
     //  return;
     
     var snews = newPlayers.map(function(val) {return val.serialData();});
-    var moves = players.map(function(val) {return {left: !!val.disconnected, heading: val.heading};});
+    var moves = players.map(function(val) {
+      //Account for race condition (when heading is set after emitting frames, and before updating).
+      val.heading = val.tmpHeading;
+      return {left: !!val.disconnected, heading: val.heading};
+    });
     
     var data = {frame: frame + 1, moves: moves};
     if (snews.length > 0)
@@ -188,7 +192,8 @@ function Game(id)
       //   "gameid": id,
       //   "frame": frame,
       //   "players": splayers,
-      //   "grid": gridSerialData(grid, players)
+      //   "grid": gridSerialData(grid, players),
+      //   "colors": colors
       // });
       val.client.emit("notifyFrame", data, function() {
         //playerReady(val, waitFrame);

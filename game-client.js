@@ -82,6 +82,8 @@ $(function() {
     });
   });
   socket.on('game', function(data) {
+    if (timeout != undefined)
+      clearTimeout(timeout);
     //Initialize game.
     //TODO: display data.gameid --- game id #
     frame = data.frame;
@@ -149,7 +151,7 @@ $(function() {
     timeout = setTimeout(function() {
       console.warn("Server has timed-out. Disconnecting.");
       socket.disconnect();
-    }, 1000);
+    }, 5000);
     fn();
   });
   

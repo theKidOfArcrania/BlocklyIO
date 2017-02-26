@@ -456,6 +456,7 @@ var moves = 0;
 function move(data)
 {
   moves++;
+  //console.log(moves + ": " + this.heading);
   //Move to new position.
   var heading = this.heading;
   if (this.posX % CELL_WIDTH !== 0 || this.posY % CELL_WIDTH !== 0)
