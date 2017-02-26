@@ -2,6 +2,7 @@
 var Player = require("./player.js");
 var renderer = require("./game-renderer.js");
 var consts = require("./game-consts.js");
+var core = require("./game-core.js");
 
 var GRID_SIZE = consts.GRID_SIZE;
 var CELL_WIDTH = consts.CELL_WIDTH;
@@ -82,27 +83,28 @@ $(function() {
   socket.on('game', function(data) {
     //Initialize game.
     //TODO: display data.gameid --- game id #
-    requestAnimationFrame(function() {
-      renderer.reset();
-      
-      //Load players.
-      data.players.forEach(function(p) {
-        renderer.addPlayer(new Player(true, grid, p));
-      });
-      user = renderer.getPlayerFromNum(data.num);
-      renderer.setUser(user);
-      
-      //Load grid.
-      var gridData = new Uint8Array(data.grid);
-      for (var r = 0; r < grid.size; r++)
-        for (var c = 0; c < grid.size; c++)
-        {
-          var ind = gridData[r * grid.size + c] - 1;
-          grid.set(r, c, ind === -1 ? null : renderer.getPlayer(ind));
-        }
-      
-      frame = data.frame;
+    frame = data.frame;
+    renderer.reset();
+    
+    //Load players.
+    data.players.forEach(function(p) {
+      var pl = new Player(true, grid, p);
+      renderer.addPlayer(pl);
     });
+    user = renderer.getPlayerFromNum(data.num);
+    renderer.setUser(user);
+    
+    //Load grid.
+    var gridData = new Uint8Array(data.grid);
+    for (var r = 0; r < grid.size; r++)
+      for (var c = 0; c < grid.size; c++)
+      {
+        var ind = gridData[r * grid.size + c] - 1;
+        grid.set(r, c, ind === -1 ? null : renderer.getPlayer(ind));
+      }
+    
+    paintLoop();
+    frame = data.frame;
   });
   
   socket.on('notifyFrame', function(data, fn) {
@@ -118,13 +120,16 @@ $(function() {
       if (data.newPlayers)
       {
         data.newPlayers.forEach(function(p) {
-          renderer.addPlayer(new Player(true, grid, p));
+          if (p.num === user.num)
+            return;
+          var pl = new Player(true, grid, p);
+          renderer.addPlayer(pl);
+          core.initPlayer(grid, pl);
         });
       }
       
       data.moves.forEach(function(val, i) {
-        //if (renderer.getPlayer(val) !== user)
-        //  renderer.getPlayer(i).heading = val.heading;
+        renderer.getPlayer(i).heading = val.heading;
       });
       
       paintLoop();
@@ -134,6 +139,9 @@ $(function() {
   
   socket.on('disconnect', function(){
     console.info("Server has disconnected. Creating new game.");
+    socket.disconnect();
+    user.die();
+    paintLoop();
   });
   
   var deadFrames = 0;

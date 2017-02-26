@@ -99,6 +99,7 @@ function addTail(data, orientation, count)
   {
     prev = data.prev = new TailMove(orientation);
     data.tail.push(prev);
+    prev.move += count - 1;
   }
   else
     prev.move += count;

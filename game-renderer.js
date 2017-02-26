@@ -294,8 +294,9 @@ function paint(ctx)
 
 function paintDoubleBuff()
 {
-  paint(offctx);
-  ctx.drawImage(offscreenCanvas, 0, 0);
+  paint(ctx);
+  //paint(offctx);
+  //ctx.drawImage(offscreenCanvas, 0, 0);
 }
 
 function update() {
@@ -399,7 +400,6 @@ module.exports = exports = {
     allPlayers[player.num] = players[players.length] = player;
     newPlayerFrames[player.num] = 0;
     playerPortion[player.num] = 0;
-    core.initPlayer(grid, player);
     return players.length - 1;
   },
   getPlayer: function(ind) {

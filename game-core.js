@@ -12,7 +12,7 @@ exports.updateFrame = function(grid, players, newPlayerFrames, dead, notifyKill)
 {
   var adead = [];
   if (dead instanceof Array)
-    adead = [];
+    adead = dead;
   
   var kill;
   if (!notifyKill)
@@ -28,10 +28,8 @@ exports.updateFrame = function(grid, players, newPlayerFrames, dead, notifyKill)
     if (newPlayerFrames[val.num] < ANIMATE_FRAMES)
       newPlayerFrames[val.num]++;
     else
-    {
       val.move();
-    }
-      
+    
     if (val.dead)
       adead.push(val);
     return !val.dead;

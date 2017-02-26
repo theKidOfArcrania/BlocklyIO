@@ -100,6 +100,7 @@ module.exports = Color;
 var Player = require("./player.js");
 var renderer = require("./game-renderer.js");
 var consts = require("./game-consts.js");
+var core = require("./game-core.js");
 
 var GRID_SIZE = consts.GRID_SIZE;
 var CELL_WIDTH = consts.CELL_WIDTH;
@@ -180,27 +181,28 @@ $(function() {
   socket.on('game', function(data) {
     //Initialize game.
     //TODO: display data.gameid --- game id #
-    requestAnimationFrame(function() {
-      renderer.reset();
-      
-      //Load players.
-      data.players.forEach(function(p) {
-        renderer.addPlayer(new Player(true, grid, p));
-      });
-      user = renderer.getPlayerFromNum(data.num);
-      renderer.setUser(user);
-      
-      //Load grid.
-      var gridData = new Uint8Array(data.grid);
-      for (var r = 0; r < grid.size; r++)
-        for (var c = 0; c < grid.size; c++)
-        {
-          var ind = gridData[r * grid.size + c] - 1;
-          grid.set(r, c, ind === -1 ? null : renderer.getPlayer(ind));
-        }
-      
-      frame = data.frame;
+    frame = data.frame;
+    renderer.reset();
+    
+    //Load players.
+    data.players.forEach(function(p) {
+      var pl = new Player(true, grid, p);
+      renderer.addPlayer(pl);
     });
+    user = renderer.getPlayerFromNum(data.num);
+    renderer.setUser(user);
+    
+    //Load grid.
+    var gridData = new Uint8Array(data.grid);
+    for (var r = 0; r < grid.size; r++)
+      for (var c = 0; c < grid.size; c++)
+      {
+        var ind = gridData[r * grid.size + c] - 1;
+        grid.set(r, c, ind === -1 ? null : renderer.getPlayer(ind));
+      }
+    
+    paintLoop();
+    frame = data.frame;
   });
   
   socket.on('notifyFrame', function(data, fn) {
@@ -216,13 +218,16 @@ $(function() {
       if (data.newPlayers)
       {
         data.newPlayers.forEach(function(p) {
-          renderer.addPlayer(new Player(true, grid, p));
+          if (p.num === user.num)
+            return;
+          var pl = new Player(true, grid, p);
+          renderer.addPlayer(pl);
+          core.initPlayer(grid, pl);
         });
       }
       
       data.moves.forEach(function(val, i) {
-        //if (renderer.getPlayer(val) !== user)
-        //  renderer.getPlayer(i).heading = val.heading;
+        renderer.getPlayer(i).heading = val.heading;
       });
       
       paintLoop();
@@ -232,6 +237,9 @@ $(function() {
   
   socket.on('disconnect', function(){
     console.info("Server has disconnected. Creating new game.");
+    socket.disconnect();
+    user.die();
+    paintLoop();
   });
   
   var deadFrames = 0;
@@ -253,7 +261,7 @@ $(function() {
     }
   }
 });
-},{"./game-consts.js":3,"./game-renderer.js":5,"./player.js":56,"socket.io-client":42}],3:[function(require,module,exports){
+},{"./game-consts.js":3,"./game-core.js":4,"./game-renderer.js":5,"./player.js":56,"socket.io-client":42}],3:[function(require,module,exports){
 function constant(val)
 {
   return {
@@ -286,7 +294,7 @@ exports.updateFrame = function(grid, players, newPlayerFrames, dead, notifyKill)
 {
   var adead = [];
   if (dead instanceof Array)
-    adead = [];
+    adead = dead;
   
   var kill;
   if (!notifyKill)
@@ -302,10 +310,8 @@ exports.updateFrame = function(grid, players, newPlayerFrames, dead, notifyKill)
     if (newPlayerFrames[val.num] < ANIMATE_FRAMES)
       newPlayerFrames[val.num]++;
     else
-    {
       val.move();
-    }
-      
+    
     if (val.dead)
       adead.push(val);
     return !val.dead;
@@ -710,8 +716,9 @@ function paint(ctx)
 
 function paintDoubleBuff()
 {
-  paint(offctx);
-  ctx.drawImage(offscreenCanvas, 0, 0);
+  paint(ctx);
+  //paint(offctx);
+  //ctx.drawImage(offscreenCanvas, 0, 0);
 }
 
 function update() {
@@ -815,7 +822,6 @@ module.exports = exports = {
     allPlayers[player.num] = players[players.length] = player;
     newPlayerFrames[player.num] = 0;
     playerPortion[player.num] = 0;
-    core.initPlayer(grid, player);
     return players.length - 1;
   },
   getPlayer: function(ind) {
@@ -8785,6 +8791,7 @@ function addTail(data, orientation, count)
   {
     prev = data.prev = new TailMove(orientation);
     data.tail.push(prev);
+    prev.move += count - 1;
   }
   else
     prev.move += count;

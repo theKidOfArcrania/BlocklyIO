@@ -49,7 +49,7 @@ function Game(id)
     p.client = client;
     players.push(p);
     newPlayers.push(p);
-    newPlayerFrames.push(p);
+    newPlayerFrames.push(0);
     nextInd++;
     core.initPlayer(grid, p);
     
@@ -61,7 +61,8 @@ function Game(id)
       "players": splayers,
       "grid": gridSerialData(grid, players)
     });
-    playerReady(p, frame);
+    //console.log(frame);
+    //playerReady(p, frame);
     console.log(p.name + " joined.");
     
     //TODO: kick off any clients that take too long.
@@ -77,7 +78,7 @@ function Game(id)
         "players": splayers,
         "grid": gridSerialData(grid, players)
       });
-      playerReady(p, frame);
+      //playerReady(p, frame);
     });
     
     client.on("frame", function(data, errorHan){
@@ -102,7 +103,7 @@ function Game(id)
       {
         if (data.frame < frame)
           console.log(data.frame + " != " + frame);
-        if (data.heading)
+        if (data.heading !== undefined)
         {
           if (checkInt(data.heading, 0, 4))
           {
@@ -121,8 +122,8 @@ function Game(id)
     return true;
   };
   
+  /*
   var ready = 0;
-  var tickString = "";
   var readyTick = false;
   
   function playerReady(player, waitFrame)
@@ -134,14 +135,14 @@ function Game(id)
     }
     tick();
   }
-  
+  */
   function tick() {
-    if (readyTick && ready === players.length)
-    {
-      ready = 0;
-      readyTick = false;
-    }else
-      return;
+    //if (readyTick && ready === players.length)
+    //{
+    //  ready = 0;
+    //  readyTick = false;
+    //}else
+    //  return;
     
     //TODO: notify those that drop out.
     var snews = newPlayers.map(function(val) {return val.serialData();});
@@ -155,22 +156,27 @@ function Game(id)
     }
     
     var waitFrame = frame + 1;
+    var splayers = players.map(function(val) {return val.serialData();});
+    var gridData = gridSerialData(grid, players);
     players.forEach(function(val) {
+      //val.client.emit("game", {
+      //  "num": val.num,
+      //  "gameid": id,
+      //  "frame": frame,
+      //  "players": splayers,
+      //  "grid": gridData
+      //});
       val.client.emit("notifyFrame", data, function() {
-        if (tickString.length === 10) tickString = "";
-        else tickString += " ";
-        process.stdout.write(tickString + ".            \r");
-        playerReady(val, waitFrame);
-        console.log("HI");
+        //playerReady(val, waitFrame);
       });
     });
     
     frame++;
-    update();
+    setTimeout(update, 1);
   };
   
   this.tickFrame = function() {
-    readyTick = true;
+    //readyTick = true;
     tick();
   }
   
@@ -201,7 +207,7 @@ function gridSerialData(grid, players)
 {
   var buff = Buffer.alloc(grid.size * grid.size);
   
-  var numToIndex = new Array(players[players.length - 1].num + 1);
+  var numToIndex = new Array(players.length > 0 ? players[players.length - 1].num + 1 : 0);
   for (var i = 0; i < players.length; i++)
     numToIndex[players[i].num] = i + 1;
   
