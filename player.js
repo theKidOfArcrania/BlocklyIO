@@ -1,6 +1,10 @@
 var Stack = require("./stack.js");
 var Color = require("./color.js");
 var Grid = require("./grid.js");
+var consts = require("./game-consts.js");
+
+var GRID_SIZE = consts.GRID_SIZE;
+var CELL_WIDTH = consts.CELL_WIDTH;
 
 function defineGetter(getter) {
   return {
@@ -23,9 +27,6 @@ function defineAccessorProperties(thisobj, data /*, names...*/)
     descript[arguments[i]] = defineGetter(getAt(arguments[i]));
   Object.defineProperties(thisobj, descript);
 }
-
-var CELL_WIDTH = 40;
-var GRID_SIZE = 80;
 
 function TailMove(orientation)
 {
@@ -53,7 +54,7 @@ function Tail(player, sdata)
   {
     data.startRow = data.prevRow = sdata.startRow || 0;
     data.startCol = data.prevCol = sdata.startCol || 0;
-    sdata.forEach(function(val) {
+    sdata.tail.forEach(function(val) {
       addTail(data, val.orientation, val.move);
     });
   }
@@ -68,11 +69,11 @@ function Tail(player, sdata)
 
 //Instance methods.
 function serialData(data) {
-  return JSON.serialize({
+  return {
     tail: data.tail,
     startRow: data.startRow,
     startCol: data.startCol
-  });
+  };
 }
 
 function setTailGrid(data, tailGrid, r, c)
@@ -430,7 +431,7 @@ Player.prototype.render = function(ctx, fade)
   var mid = CELL_WIDTH / 2;
   var grd = ctx.createRadialGradient(this.posX + mid, this.posY + mid - SHADOW_OFFSET, 1,
             this.posX + mid, this.posY + mid - SHADOW_OFFSET, CELL_WIDTH);
-  grd.addColorStop(0, this.baseColor.rgbString().deriveAlpha(fade));
+  grd.addColorStop(0, this.baseColor.deriveAlpha(fade).rgbString());
   grd.addColorStop(1, new Color(0, 0, 1, fade).rgbString());
   ctx.fillStyle = grd;
   ctx.fillRect(this.posX - 1, this.posY - SHADOW_OFFSET, CELL_WIDTH + 2, CELL_WIDTH);

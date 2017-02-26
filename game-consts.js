@@ -10,7 +10,8 @@ var consts = {
   GRID_SIZE: constant(80),
   CELL_WIDTH: constant(40),
   SPEED: constant(5),
-  BORDER_WIDTH: constant(20)
+  BORDER_WIDTH: constant(20),
+  MAX_PLAYERS: constant(255)
 };
 
 Object.defineProperties(module.exports, consts);

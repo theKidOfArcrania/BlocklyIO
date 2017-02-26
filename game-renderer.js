@@ -35,13 +35,12 @@ $(function () {
   gameHeight = canvasHeight - BAR_HEIGHT;
 });
 
-var animateGrid = new Grid(GRID_SIZE);
+
 var allowAnimation = true;
-var players = [];
-var allPlayers = [];
-var newPlayerFrames = [];
-var playerPortion = [];
-var grid = new Grid(GRID_SIZE, function(row, col, before, after) {
+var animateGrid, players, allPlayers, newPlayerFrames, playerPortion, grid, 
+  animateTo, offset, user, lagPortion, portionSpeed, zoom, kills, showedDead;
+
+grid = new Grid(GRID_SIZE, function(row, col, before, after) {
   //Keep track of areas.
   if (before)
     playerPortion[before.num]--;
@@ -58,16 +57,27 @@ var grid = new Grid(GRID_SIZE, function(row, col, before, after) {
   });
 });
 
-var animateTo = [0, 0];
-var offset = [0, 0];
+function init() {
+  animateGrid = new Grid(GRID_SIZE);
+  grid.reset();
+  
+  players = [];
+  allPlayers = [];
+  newPlayerFrames = [];
+  playerPortion = [];
+  
+  animateTo = [0, 0];
+  offset = [0, 0];
+  
+  user = null;
+  lagPortion = 0;
+  portionSpeed = 0;
+  zoom = 1;
+  kills = 0;
+  showedDead = false;
+}
 
-var user;
-var lagPortion = 0;
-var portionSpeed = 0;
-var zoom = 1;
-var kills = 0;
-
-var showedDead = false;
+init();
 
 //Paint methods.
 function paintGridBorder(ctx) 
@@ -207,17 +217,17 @@ function paintUIBar(ctx)
   var barOffset;
   ctx.fillStyle = "white";
   ctx.font = "24px Changa";
-  barOffset = ctx.measureText(user.name).width + 20;
-  ctx.fillText(user.name, 5, CELL_WIDTH - 5);
+  barOffset = ctx.measureText(user ? user.name : "").width + 20;
+  ctx.fillText(user ? user.name : "", 5, CELL_WIDTH - 5);
   
   //Draw filled bar.
   ctx.fillStyle = "rgba(180, 180, 180, .3)";
   ctx.fillRect(barOffset, 0, BAR_WIDTH, BAR_HEIGHT);
   
   var barSize = Math.ceil((BAR_WIDTH - MIN_BAR_WIDTH) * lagPortion + MIN_BAR_WIDTH);
-  ctx.fillStyle = user.baseColor.rgbString();
+  ctx.fillStyle = user ? user.baseColor.rgbString() : "";
   ctx.fillRect(barOffset, 0, barSize, CELL_WIDTH);
-  ctx.fillStyle = user.shadowColor.rgbString();
+  ctx.fillStyle = user ? user.shadowColor.rgbString() : "";
   ctx.fillRect(barOffset, CELL_WIDTH, barSize, SHADOW_OFFSET);
   
   //Percentage
@@ -274,7 +284,7 @@ function paint(ctx)
   ctx.restore();
   paintUIBar(ctx);
   
-  if (user.dead && !showedDead)
+  if ((!user || user.dead) && !showedDead)
   {
     showedDead = true;
     console.log("You died!");
@@ -302,7 +312,10 @@ function update() {
   }
   
   //Change area percentage
-  var userPortion = playerPortion[user.num] / (GRID_SIZE * GRID_SIZE);
+  var userPortion;
+  if (user) userPortion = playerPortion[user.num] / (GRID_SIZE * GRID_SIZE);
+  else userPortion = 0;
+  
   if (lagPortion !== userPortion)
   {
     delta = userPortion - lagPortion;
@@ -327,10 +340,10 @@ function update() {
     console.log(val.name + " is dead");
     allPlayers[val.num] = undefined;
   });
-    
+  
   //TODO: animate player is dead. (maybe explosion?), and tail rewinds itself.
   //TODO: show when this player is dead
-  centerOnPlayer(user, animateTo);
+  if (user) centerOnPlayer(user, animateTo);
 }
 
 //Helper methods.
@@ -381,6 +394,8 @@ function getBounceOffset(frame)
 
 module.exports = exports = {
   addPlayer: function(player) {
+    if (allPlayers[player.num])
+      return; //Already added.
     allPlayers[player.num] = players[players.length] = player;
     newPlayerFrames[player.num] = 0;
     playerPortion[player.num] = 0;
@@ -390,15 +405,21 @@ module.exports = exports = {
   getPlayer: function(ind) {
     return players[ind];
   },
-  playerNum: function() {
+  getPlayerFromNum: function(num) {
+    return allPlayers[num];
+  },
+  playerSize: function() {
     return players.length;
   },
-  initUser: function(player) {
+  setUser: function(player) {
     user = player;
     centerOnPlayer(user, offset);
   },
   incrementKill: function() {
     kills++;
+  },
+  reset: function() {
+    init();
   },
   paint: paintDoubleBuff,
   update: update

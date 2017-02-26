@@ -28,7 +28,9 @@ exports.updateFrame = function(grid, players, newPlayerFrames, dead, notifyKill)
     if (newPlayerFrames[val.num] < ANIMATE_FRAMES)
       newPlayerFrames[val.num]++;
     else
+    {
       val.move();
+    }
       
     if (val.dead)
       adead.push(val);

@@ -1,6 +1,7 @@
 function Grid(size, changeCallback)
 {
   var grid = new Array(size);
+  var modified = false;
   
   var data = {
     grid: grid,
@@ -26,7 +27,16 @@ function Grid(size, changeCallback)
     if (typeof changeCallback === "function")
       changeCallback(row, col, before, value);
     
+    modified = true;
+    
     return before;
+  }
+  this.reset = function() {
+    if (modified)
+    {
+      grid = new Array(size);
+      modified = false;
+    }
   }
   
   this.isOutOfBounds = isOutOfBounds.bind(this, data);

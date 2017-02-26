@@ -1,10 +1,12 @@
-var GRID_SIZE = 80;
-var CELL_WIDTH = 40;
-var MAX_PLAYERS = 255;
 
 var Grid = require("./grid.js");
 var Player = require("./player.js");
 var core = require("./game-core.js");
+var consts = require("./game-consts.js");
+
+var GRID_SIZE = consts.GRID_SIZE;
+var CELL_WIDTH = consts.CELL_WIDTH;
+var MAX_PLAYERS = consts.MAX_PLAYERS;
 
 function Game(id)
 {
@@ -50,7 +52,7 @@ function Game(id)
     newPlayers.push(p);
     newPlayerFrames.push(p);
     nextInd++;
-    core.initPlayer(p);
+    core.initPlayer(grid, p);
     
     var splayers = players.map(function(val) {return val.serialData();});
     client.emit("game", {
@@ -60,11 +62,12 @@ function Game(id)
       "players": splayers,
       "grid": gridSerialData(grid, players)
     });
+    console.log(p.name + " joined.");
     
     //TODO: limit number of requests per frame.
-    client.on("requestFrame", function (fn) {
+    client.on("requestFrame", function () {
       var splayers = players.map(function(val) {return val.serialData();});
-      fn({
+      client.emit("game", {
         "num": p.num,
         "gameid": id,
         "frame": frame,
@@ -72,6 +75,7 @@ function Game(id)
         "grid": gridSerialData(grid, players)
       });
     });
+    
     client.on("frame", function(data, errorHan){
       if (typeof data === "function")
       {
@@ -86,8 +90,8 @@ function Game(id)
         errorHan(false, "No data supplied.");
       else if (!checkInt(data.frame, 0, Infinity))
         errorHan(false, "Requires a valid non-negative frame integer.");
-      else if (data.frame < frame)
-        errorHan(false, "Late frame received.");
+      //else if (data.frame < frame)
+      //  errorHan(false, "Late frame received.");
       else if (data.frame > frame)
         errorHan(false, "Invalid frame received.");
       else
@@ -109,10 +113,11 @@ function Game(id)
   
   
   this.tickFrame = function() {
+    //TODO: notify those that drop out.
     var snews = newPlayers.map(function(val) {return val.serialData();});
     var moves = players.map(function(val) {return {heading: val.heading};});
     
-    var data = {moves: moves};
+    var data = {frame: frame + 1, moves: moves};
     if (snews.length > 0)
     {
       data.newPlayers = snews;
@@ -129,7 +134,10 @@ function Game(id)
   {
     var dead = [];
     core.updateFrame(grid, players, newPlayerFrames, dead);
-    dead.forEach(function(val) { val.client.disconnect(true); });
+    dead.forEach(function(val) { 
+      console.log(val.name + " died.");
+      val.client.disconnect(true); 
+    });
   }
 }
 
