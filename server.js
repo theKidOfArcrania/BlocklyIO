@@ -26,6 +26,9 @@ io.on('connection', function(socket){
 });
 server.listen(8081);
 
-setInterval(function() {
+function tick() {
   games[0].tickFrame();
-}, 1000 / 60);
+  setTimeout(tick, 1000 / 60);
+}
+tick();
+//setTimeout(tick, 1000 / 60);

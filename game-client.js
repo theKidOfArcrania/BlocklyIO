@@ -67,7 +67,7 @@ $(function() {
   var grid = renderer.grid; 
   
   //Socket connection.
-  socket = require('socket.io-client')('http://paper-io-thekidofarcrania.c9users.io:8081');
+  socket = require('socket.io-client')('localhost:8081');
   socket.on('connect', function(){
     console.info("Connected to server.");
     socket.emit('hello', {
@@ -79,31 +79,33 @@ $(function() {
       else console.error("Unable to connect to game.");
     });
   });
-  socket.on('game', function(data){
+  socket.on('game', function(data) {
     //Initialize game.
     //TODO: display data.gameid --- game id #
-    renderer.reset();
-    
-    //Load players.
-    data.players.forEach(function(p) {
-      renderer.addPlayer(new Player(true, grid, p));
+    requestAnimationFrame(function() {
+      renderer.reset();
+      
+      //Load players.
+      data.players.forEach(function(p) {
+        renderer.addPlayer(new Player(true, grid, p));
+      });
+      user = renderer.getPlayerFromNum(data.num);
+      renderer.setUser(user);
+      
+      //Load grid.
+      var gridData = new Uint8Array(data.grid);
+      for (var r = 0; r < grid.size; r++)
+        for (var c = 0; c < grid.size; c++)
+        {
+          var ind = gridData[r * grid.size + c] - 1;
+          grid.set(r, c, ind === -1 ? null : renderer.getPlayer(ind));
+        }
+      
+      frame = data.frame;
     });
-    user = renderer.getPlayerFromNum(data.num);
-    renderer.setUser(user);
-    
-    //Load grid.
-    var gridData = new Uint8Array(data.grid);
-    for (var r = 0; r < grid.size; r++)
-      for (var c = 0; c < grid.size; c++)
-      {
-        var ind = gridData[r * grid.size + c] - 1;
-        grid.set(r, c, ind === -1 ? null : renderer.getPlayer(ind));
-      }
-    
-    frame = data.frame;
   });
   
-  socket.on('notifyFrame', function(data) {
+  socket.on('notifyFrame', function(data, fn) {
     if (data.frame - 1 !== frame)
     {
       console.error("Frames don't match up!");
@@ -112,19 +114,22 @@ $(function() {
     }
     
     frame++;
-    if (data.newPlayers)
-    {
-      data.newPlayers.forEach(function(p) {
-        renderer.addPlayer(new Player(true, grid, p));
+    requestAnimationFrame(function() {
+      if (data.newPlayers)
+      {
+        data.newPlayers.forEach(function(p) {
+          renderer.addPlayer(new Player(true, grid, p));
+        });
+      }
+      
+      data.moves.forEach(function(val, i) {
+        //if (renderer.getPlayer(val) !== user)
+        //  renderer.getPlayer(i).heading = val.heading;
       });
-    }
-    
-    data.moves.forEach(function(val, i) {
-      if (renderer.getPlayer(val) !== user)
-        renderer.getPlayer(i).heading = val.heading;
+      
+      paintLoop();
     });
-    
-    paintLoop();
+    fn();
   });
   
   socket.on('disconnect', function(){
@@ -135,16 +140,15 @@ $(function() {
   function paintLoop()
   {
     renderer.paint();
-    if (user.dead && deadFrames === 60) //One second of frames
-    {
-      //TODO: Show welcome screen.
-      deadFrames = 0;
-      return;
-    }
-    
     renderer.update();
     if (user.dead)
     {
+      if (deadFrames === 60) //One second of frames
+      {
+        deadFrames = 0;
+        return;
+      }
+      
       socket.disconnect();
       deadFrames++;
       requestAnimationFrame(paintLoop);

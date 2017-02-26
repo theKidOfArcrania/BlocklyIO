@@ -27,7 +27,6 @@ function Game(id)
     }
   });
   
-  
   this.id = id;
   
   this.addPlayer = function(client, name) {
@@ -62,10 +61,14 @@ function Game(id)
       "players": splayers,
       "grid": gridSerialData(grid, players)
     });
+    playerReady(p, frame);
     console.log(p.name + " joined.");
     
+    //TODO: kick off any clients that take too long.
     //TODO: limit number of requests per frame.
     client.on("requestFrame", function () {
+      //if (p.frame === frame)
+      //  return;
       var splayers = players.map(function(val) {return val.serialData();});
       client.emit("game", {
         "num": p.num,
@@ -74,6 +77,7 @@ function Game(id)
         "players": splayers,
         "grid": gridSerialData(grid, players)
       });
+      playerReady(p, frame);
     });
     
     client.on("frame", function(data, errorHan){
@@ -96,6 +100,8 @@ function Game(id)
         errorHan(false, "Invalid frame received.");
       else
       {
+        if (data.frame < frame)
+          console.log(data.frame + " != " + frame);
         if (data.heading)
         {
           if (checkInt(data.heading, 0, 4))
@@ -108,11 +114,35 @@ function Game(id)
         }
       }
     });
+    
+    client.on('disconnect', function() {
+      console.log(p.name + " left.")
+    });
     return true;
   };
   
+  var ready = 0;
+  var tickString = "";
+  var readyTick = false;
   
-  this.tickFrame = function() {
+  function playerReady(player, waitFrame)
+  {
+    if (player.frame < waitFrame)
+    {
+      ready++;
+      player.frame = waitFrame;
+    }
+    tick();
+  }
+  
+  function tick() {
+    if (readyTick && ready === players.length)
+    {
+      ready = 0;
+      readyTick = false;
+    }else
+      return;
+    
     //TODO: notify those that drop out.
     var snews = newPlayers.map(function(val) {return val.serialData();});
     var moves = players.map(function(val) {return {heading: val.heading};});
@@ -124,11 +154,25 @@ function Game(id)
       newPlayers = [];
     }
     
-    players.forEach(function(val) {val.client.emit("notifyFrame", data)});
+    var waitFrame = frame + 1;
+    players.forEach(function(val) {
+      val.client.emit("notifyFrame", data, function() {
+        if (tickString.length === 10) tickString = "";
+        else tickString += " ";
+        process.stdout.write(tickString + ".            \r");
+        playerReady(val, waitFrame);
+        console.log("HI");
+      });
+    });
     
     frame++;
     update();
   };
+  
+  this.tickFrame = function() {
+    readyTick = true;
+    tick();
+  }
   
   function update()
   {
