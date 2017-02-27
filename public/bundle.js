@@ -401,6 +401,7 @@ $(function() {
     frame = data.frame;
   });
   
+  var paintFrames = 0;
   socket.on('notifyFrame', function(data, fn) {
     if (timeout != undefined)
       clearTimeout(timeout);
@@ -413,25 +414,26 @@ $(function() {
     }
     
     frame++;
-    requestAnimationFrame(function() {
-      if (data.newPlayers)
-      {
-        data.newPlayers.forEach(function(p) {
-          if (p.num === user.num)
-            return;
-          var pl = new Player(true, grid, p);
-          renderer.addPlayer(pl);
-          core.initPlayer(grid, pl);
-        });
-      }
-      
-      data.moves.forEach(function(val, i) {
-        var player = renderer.getPlayer(i);
-        if (!player) return;
-        if (val.left) player.die();
-        player.heading = val.heading;
+    if (data.newPlayers)
+    {
+      data.newPlayers.forEach(function(p) {
+        if (p.num === user.num)
+          return;
+        var pl = new Player(true, grid, p);
+        renderer.addPlayer(pl);
+        core.initPlayer(grid, pl);
       });
-      
+    }
+    
+    data.moves.forEach(function(val, i) {
+      var player = renderer.getPlayer(i);
+      if (!player) return;
+      if (val.left) player.die();
+      player.heading = val.heading;
+    });
+    
+    paintFrames++;
+    requestAnimationFrame(function() {
       paintLoop();
     });
     timeout = setTimeout(function() {
@@ -451,8 +453,15 @@ $(function() {
   var deadFrames = 0;
   function paintLoop()
   {
+    if (paintFrames === 0)
+      return;
+    while (paintFrames > 0)
+    {
+      renderer.update();
+      paintFrames--;
+    }
     renderer.paint();
-    renderer.update();
+    
     if (user.dead)
     {
       if (timeout)
@@ -470,6 +479,7 @@ $(function() {
       
       socket.disconnect();
       deadFrames++;
+      paintFrames++;
       requestAnimationFrame(paintLoop);
     }
   }
