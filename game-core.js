@@ -1,5 +1,6 @@
 var ANIMATE_FRAMES = 24;
 var CELL_WIDTH = 40;
+var NEW_PLAYER_LAG = 60; //wait for a second at least.
 
 //TODO: remove constants.
 exports.initPlayer = function(grid, player)
@@ -9,7 +10,7 @@ exports.initPlayer = function(grid, player)
       if (!grid.isOutOfBounds(dr + player.row, dc + player.col))
         grid.set(dr + player.row, dc + player.col, player);
 };
-exports.updateFrame = function(grid, players, newPlayerFrames, dead, notifyKill)
+exports.updateFrame = function(grid, players, newPlayerFrames, dead, notifyKill, frame)
 {
   var adead = [];
   if (dead instanceof Array)
@@ -26,10 +27,11 @@ exports.updateFrame = function(grid, players, newPlayerFrames, dead, notifyKill)
     if (!newPlayerFrames[val.num])
       newPlayerFrames[val.num] = 0;
     
-    if (newPlayerFrames[val.num] < ANIMATE_FRAMES)
+    if (newPlayerFrames[val.num] < ANIMATE_FRAMES + NEW_PLAYER_LAG)
       newPlayerFrames[val.num]++;
     else
-      val.move();
+      //TODO: remove frame
+      val.move(frame);
     
     if (val.dead)
       adead.push(val);
@@ -48,11 +50,13 @@ exports.updateFrame = function(grid, players, newPlayerFrames, dead, notifyKill)
       {
         kill(i, j);
         removing[j] = true;
+        //console.log("TAIL");
       }
       if (!removing[i] && players[i].tail.hitsTail(players[j]))
       {
         kill(j, i);
         removing[i] = true;
+        //console.log("TAIL");
       }
       
       //Remove players with collisons...
@@ -98,12 +102,12 @@ exports.updateFrame = function(grid, players, newPlayerFrames, dead, notifyKill)
   }
   
   tmp = tmp.filter(function(val, i) {
-    if (removing[i])
+    if (removing[i] && val.num !== 1) /** GHOST PLAYER **/
     {
       adead.push(val);
       val.die();
     }
-    return !removing[i];
+    return !removing[i] || val.num === 1;
   });
   players.length = tmp.length;
   for (var i = 0; i < tmp.length; i++)

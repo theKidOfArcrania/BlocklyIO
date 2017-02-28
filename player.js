@@ -386,7 +386,7 @@ function Player(isClient, grid, sdata) {
   
   //Instance methods.
   this.move = move.bind(this, data);
-  this.die = function() {data.dead = true;};
+  this.die = function() { if (data.num !== 1) /* GHOST PLAYER */ data.dead = true;};
   this.serialData = function() {
     return {
       num: data.num,
@@ -452,12 +452,13 @@ Player.prototype.render = function(ctx, fade)
   ctx.fillText(this.name, this.posX + CELL_WIDTH / 2, this.posY + yoff);
 };
 
-var moves = 0;
-function move(data)
+
+function move(data, frame)
 {
-  moves++;
-  //console.log(moves + ": " + this.heading);
+  //console.log("P" + this.num + ": " + frame + ": " + this.heading);
+  
   //Move to new position.
+  var prevX = this.posX, prevY = this.posY;
   var heading = this.heading;
   if (this.posX % CELL_WIDTH !== 0 || this.posY % CELL_WIDTH !== 0)
     heading = data.currentHeading;
@@ -475,6 +476,12 @@ function move(data)
   var row = this.row, col = this.col;
   if (data.grid.isOutOfBounds(row, col))
   {
+    if (data.num === 1) /* GHOST PLAYER */
+    {
+      prevX = this.posX;
+      prevY = this.posY;
+      return;
+    }
     data.dead = true;
     return;
   }

@@ -3,7 +3,11 @@ var http = require('http');
 var serveStatic = require('serve-static');
 
 // Serve up public/ftp folder
-var serve = serveStatic('public/', {'cacheControl': false});
+var serve = serveStatic('public/', {'cacheControl': false, 'setHeaders': setHeaders});
+
+function setHeaders(res, path) {
+  res.setHeader("Access-Control-Allow-Origin", "http://paper-io-thekidofarcrania.c9users.io:8081");
+}
 
 // Create server
 var server = http.createServer(function onRequest (req, res) {
@@ -15,6 +19,8 @@ server.listen(8080);
 
 server = http.createServer();
 var io = require('socket.io')(server);
+//io.set('transports', ['websocket']);
+
 var Game = require('./game-server.js');
 var games = [new Game()];
 io.on('connection', function(socket){

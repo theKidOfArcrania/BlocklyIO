@@ -255,6 +255,7 @@ function paintUIBar(ctx)
   ctx.measureText(killsText).width + killsOffset + 20, CELL_WIDTH - 5);
 }
 
+//TODO: depict leaderboard.
 function paint(ctx)
 {
   ctx.fillStyle = 'whitesmoke';
@@ -298,7 +299,7 @@ function paintDoubleBuff()
   ctx.drawImage(offscreenCanvas, 0, 0);
 }
 
-function update() {
+function update(frame) {
   
   //Change grid offsets.
   for (var i = 0; i <= 1; i++)
@@ -346,7 +347,7 @@ function update() {
   {
     if (players[killer] === user && killer !== other)
       kills++;
-  });
+  }, frame);
   dead.forEach(function(val) {
     console.log(val.name + " is dead");
     allPlayers[val.num] = undefined;

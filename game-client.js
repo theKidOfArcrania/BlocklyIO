@@ -3,6 +3,7 @@ var Player = require("./player.js");
 var renderer = require("./game-renderer.js");
 var consts = require("./game-consts.js");
 var core = require("./game-core.js");
+var io = require('socket.io-client');
 
 var GRID_SIZE = consts.GRID_SIZE;
 var CELL_WIDTH = consts.CELL_WIDTH;
@@ -32,7 +33,7 @@ var user, socket, frame;
 
 //Event listeners
 $(document).keydown(function(e) {
-  if (user.dead)
+  if (!user || user.dead)
     return;
   var newHeading = -1;
   switch (e.which)
@@ -63,24 +64,42 @@ $(document).keydown(function(e) {
   e.preventDefault();
 });
 
-
-$(function() {
-  var grid = renderer.grid; 
-  var timeout = undefined;
+window.run = run;
+function run() {
+  $("#begin").css("display: none");
+  $("#begin").animate({
+      opacity: 0
+  }, 1000);
+  
+  user = null;
+  deadFrames = 0;
   
   //Socket connection.
-  socket = require('socket.io-client')('http://paper-io-thekidofarcrania.c9users.io:8081');
+  //, {transports: ['websocket'], upgrade: false}
+  connectServer();
+  socket.emit('hello', {
+    name: $("#name").val(),
+    type: 0, //Free-for-all
+    gameid: -1 //Requested game-id, or -1 for anyone.
+  }, function(success) {
+    if (success) console.info("Connected to game!");
+    else console.error("Unable to connect to game.");
+  });
+}
+
+var grid = renderer.grid; 
+var timeout = undefined;
+var dirty = false;
+var deadFrames = 0;
+
+function connectServer() {
+  io.j = [];
+  io.sockets = [];
+  socket = io('http://paper-io-thekidofarcrania.c9users.io:8081', {'forceNew': true});
   socket.on('connect', function(){
     console.info("Connected to server.");
-    socket.emit('hello', {
-      name: 'Test player',
-      type: 0, //Free-for-all
-      gameid: -1 //Requested game-id, or -1 for anyone.
-    }, function(success) {
-      if (success) console.info("Connected to game!");
-      else console.error("Unable to connect to game.");
-    });
   });
+  var colors;
   socket.on('game', function(data) {
     if (timeout != undefined)
       clearTimeout(timeout);
@@ -89,9 +108,10 @@ $(function() {
     frame = data.frame;
     renderer.reset();
     
+    waiting = false;
     
     //Load colors.
-    var colors = data.colors || [];
+    colors = data.colors || [];
     
     //Load players.
     data.players.forEach(function(p) {
@@ -115,15 +135,19 @@ $(function() {
     frame = data.frame;
   });
   
-  var paintFrames = 0;
+  var waiting = false;
   socket.on('notifyFrame', function(data, fn) {
     if (timeout != undefined)
       clearTimeout(timeout);
+    
+    if (waiting)
+      return;
     
     if (data.frame - 1 !== frame)
     {
       console.error("Frames don't match up!");
       socket.emit('requestFrame'); //Restore data.
+      waiting = true;
       return;
     }
     
@@ -133,68 +157,85 @@ $(function() {
       data.newPlayers.forEach(function(p) {
         if (p.num === user.num)
           return;
+        p.base = colors[p.num];
         var pl = new Player(true, grid, p);
         renderer.addPlayer(pl);
         core.initPlayer(grid, pl);
       });
     }
     
+    var found = new Array(renderer.playerSize());
     data.moves.forEach(function(val, i) {
-      var player = renderer.getPlayer(i);
+      var player = renderer.getPlayerFromNum(val.num);
       if (!player) return;
       if (val.left) player.die();
+      found[i] = true;
       player.heading = val.heading;
     });
+    for (var i = 0; i < renderer.playerSize(); i++)
+    {
+      //Implicitly leaving game.
+      if (!found[i])
+      {
+        var player = renderer.getPlayer();
+        player && player.die();
+      }
+    }
     
-    paintFrames++;
+    renderer.update(frame);
+    
+    dirty = true;
     requestAnimationFrame(function() {
       paintLoop();
     });
     timeout = setTimeout(function() {
       console.warn("Server has timed-out. Disconnecting.");
       socket.disconnect();
-    }, 5000);
+    }, 500);
     fn();
   });
   
   socket.on('disconnect', function(){
+    if (!user)
+      return;
     console.info("Server has disconnected. Creating new game.");
     socket.disconnect();
     user.die();
     paintLoop();
-  });
-  
-  var deadFrames = 0;
-  function paintLoop()
-  {
-    if (paintFrames === 0)
-      return;
-    while (paintFrames > 0)
-    {
-      renderer.update();
-      paintFrames--;
-    }
-    renderer.paint();
     
-    if (user.dead)
+    $("#begin").css("display: block");
+    $("#begin").animate({
+      opacity: .9999
+    }, 500);
+  });
+}
+
+function paintLoop()
+{
+  if (!dirty)
+    return;
+  renderer.paint();
+  dirty = false;
+  
+  if (user.dead)
+  {
+    if (timeout)
+      clearTimeout(timeout);
+    if (deadFrames === 60) //One second of frame
     {
-      if (timeout)
-        clearTimeout(timeout);
-      if (deadFrames === 120) //Two second of frames
-      {
-        var before = renderer.allowAnimation;
-        renderer.allowAnimation = false;
-        renderer.update();
-        renderer.paint();
-        renderer.allowAnimation = before;
-        deadFrames = 0;
-        return;
-      }
-      
-      socket.disconnect();
-      deadFrames++;
-      paintFrames++;
-      requestAnimationFrame(paintLoop);
+      var before = renderer.allowAnimation;
+      renderer.allowAnimation = false;
+      renderer.update();
+      renderer.paint();
+      renderer.allowAnimation = before;
+      user = null;
+      deadFrames = 0;
+      return;
     }
+    
+    socket.disconnect();
+    deadFrames++;
+    dirty = true;
+    requestAnimationFrame(paintLoop);
   }
-});
+}

@@ -1,27 +1,21 @@
 <head>
     <link href="https://fonts.googleapis.com/css?family=Changa:600" rel="stylesheet">
+    <link href="styles.css" rel="stylesheet">
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
     <script src="bundle.js"></script>
-    <style>
-        body, html {
-            width: 100%;
-            height: 100%;
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            background: black;
-        }
-		
-		canvas {
-            image-rendering: optimizeSpeed;             /* Older versions of FF          */
-            image-rendering: -moz-crisp-edges;          /* FF 6.0+                       */
-            image-rendering: -webkit-optimize-contrast; /* Safari                        */
-            image-rendering: -o-crisp-edges;            /* OS X & Windows Opera (12.02+) */
-            image-rendering: pixelated;                 /* Awesome future-browsers       */
-            -ms-interpolation-mode: nearest-neighbor;   /* IE                            */
-		}
-    </style>
+    <title>Paper.IO</title>
 </head>
 <body>
     <canvas id="main-ui"></canvas>
+    <form autocomplete="off" onsubmit="requestAnimationFrame(run); return false;">
+        <div id="begin" style="opacity: .99999" class="fullscreen">
+            <div class="center">
+                <h1>Paper.IO!</h1>
+                <small>Todo: replace ^^^ with a picture. Work in progress.</small>
+                <h1>Enter your name</h1>
+                <input autocomplete="off" id="name" placeholder="An awesome name!">
+                <button type="submit">Play!</button>
+            </div>
+        </div>
+    </form>
 </body>

@@ -171,11 +171,12 @@ function Game(id)
     //}else
     //  return;
     
+    //TODO: notify those players that this server automatically drops out.
     var snews = newPlayers.map(function(val) {return val.serialData();});
     var moves = players.map(function(val) {
       //Account for race condition (when heading is set after emitting frames, and before updating).
       val.heading = val.tmpHeading;
-      return {left: !!val.disconnected, heading: val.heading};
+      return {num: val.num, left: !!val.disconnected, heading: val.heading};
     });
     
     var data = {frame: frame + 1, moves: moves};
@@ -185,19 +186,26 @@ function Game(id)
       newPlayers = [];
     }
     
+    //TODO: send a "good-bye" frame to the dead players. Just in case.
     players.forEach(function(val) {
-      // var splayers = players.map(function(val) {return val.serialData();});
-      // val.client.emit("game", {
-      //   "num": val.num,
-      //   "gameid": id,
-      //   "frame": frame,
-      //   "players": splayers,
-      //   "grid": gridSerialData(grid, players),
-      //   "colors": colors
-      // });
-      val.client.emit("notifyFrame", data, function() {
-        //playerReady(val, waitFrame);
-      });
+      if (val.num === 1) //GHOST PLAYER
+      {
+        var splayers = players.map(function(val) {return val.serialData();});
+        val.client.emit("game", {
+          "num": val.num,
+          "gameid": id,
+          "frame": frame,
+          "players": splayers,
+          "grid": gridSerialData(grid, players),
+          "colors": colors
+        });
+      }
+      else
+      {
+        val.client.emit("notifyFrame", data, function() {
+          //playerReady(val, waitFrame);
+        });
+      }
     });
     
     frame++;
@@ -212,7 +220,7 @@ function Game(id)
   function update()
   {
     var dead = [];
-    core.updateFrame(grid, players, newPlayerFrames, dead);
+    core.updateFrame(grid, players, newPlayerFrames, dead, undefined, frame);
     dead.forEach(function(val) { 
       console.log(val.name + " died.");
       //val.client.disconnect(true); 
