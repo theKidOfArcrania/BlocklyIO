@@ -3,10 +3,11 @@ var http = require('http');
 var serveStatic = require('serve-static');
 
 // Serve up public/ftp folder
-var serve = serveStatic('public/', {'cacheControl': false, 'setHeaders': setHeaders});
+var serve = serveStatic('public/', {'setHeaders': setHeaders});
 
 function setHeaders(res, path) {
   res.setHeader("Access-Control-Allow-Origin", "http://paper-io-thekidofarcrania.c9users.io:8081");
+  res.setHeader('Cache-Control', 'public, max-age=0');
 }
 
 // Create server

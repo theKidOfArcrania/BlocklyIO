@@ -120,6 +120,7 @@ function connectServer() {
       renderer.addPlayer(pl);
     });
     user = renderer.getPlayerFromNum(data.num);
+    if (!user) throw new Error();
     renderer.setUser(user);
     
     //Load grid.
@@ -136,7 +137,7 @@ function connectServer() {
   });
   
   var waiting = false;
-  socket.on('notifyFrame', function(data, fn) {
+  socket.on('notifyFrame', function(data) {
     if (timeout != undefined)
       clearTimeout(timeout);
     
@@ -149,6 +150,7 @@ function connectServer() {
       socket.emit('requestFrame'); //Restore data.
       waiting = true;
       return;
+      //TODO: cache frames when this happen.
     }
     
     frame++;
@@ -184,6 +186,19 @@ function connectServer() {
     
     renderer.update(frame);
     
+    var locs = {};
+    for (var i = 0; i < renderer.playerSize(); i++)
+    {
+      var p = renderer.getPlayer(i);
+      locs[p.num] = [p.posX, p.posY, p.waitLag];
+    }
+    socket.emit("verify", {
+      frame: frame,
+      locs: locs
+    }, function(frame, success, msg) {
+      if (!success) console.error(frame + ": " + msg);
+    }.bind(this, frame));
+    
     dirty = true;
     requestAnimationFrame(function() {
       paintLoop();
@@ -191,8 +206,7 @@ function connectServer() {
     timeout = setTimeout(function() {
       console.warn("Server has timed-out. Disconnecting.");
       socket.disconnect();
-    }, 500);
-    fn();
+    }, 3000);
   });
   
   socket.on('disconnect', function(){

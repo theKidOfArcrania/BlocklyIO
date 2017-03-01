@@ -2,7 +2,7 @@
 var Color = require("./color");
 var Grid = require("./grid");
 var Player = require("./player");
-var Gate = require("./gate");
+//var Gate = require("./gate");
 var core = require("./game-core");
 var consts = require("./game-consts");
 
@@ -36,7 +36,7 @@ function Game(id)
   var nextInd = 0;
   var players = [];
   var newPlayers = [];
-  var newPlayerFrames = [];
+  var frameLocs = [];
   var frame = 0;
   
   var filled = 0;
@@ -76,19 +76,9 @@ function Game(id)
     p.client = client;
     players.push(p);
     newPlayers.push(p);
-    newPlayerFrames.push(0);
     nextInd++;
     core.initPlayer(grid, p);
     
-    var splayers = players.map(function(val) {return val.serialData();});
-    client.emit("game", {
-      "num": p.num,
-      "gameid": id,
-      "frame": frame,
-      "players": splayers,
-      "grid": gridSerialData(grid, players),
-      "colors": colors
-    });
     //playerReady(p, frame);
     console.log(p.name + " joined.");
     
@@ -109,6 +99,20 @@ function Game(id)
       //playerReady(p, frame);
     });
     
+    client.on("verify", function(data, resp) {
+      if (typeof resp !== "function")
+        return;
+      
+      if (!data.frame)
+        resp(false, "No frame supplied");
+      else if (!checkInt(data.frame, 0, frame + 1))
+        resp(false, "Must be a valid frame number");
+      else
+      {
+        verifyPlayerLocations(data.frame, data.locs, resp);
+      }
+    });
+    
     client.on("frame", function(data, errorHan){
       if (typeof data === "function")
       {
@@ -123,8 +127,6 @@ function Game(id)
         errorHan(false, "No data supplied.");
       else if (!checkInt(data.frame, 0, Infinity))
         errorHan(false, "Requires a valid non-negative frame integer.");
-      //else if (data.frame < frame)
-      //  errorHan(false, "Late frame received.");
       else if (data.frame > frame)
         errorHan(false, "Invalid frame received.");
       else
@@ -149,35 +151,73 @@ function Game(id)
     return true;
   };
   
-  /*
-  var ready = 0;
-  var readyTick = false;
-  
-  function playerReady(player, waitFrame)
+  function pushPlayerLocations()
   {
-    if (player.frame < waitFrame)
-    {
-      ready++;
-      player.frame = waitFrame;
-    }
-    tick();
+    var locs = [];
+    for (var p of players)
+      locs[p.num] = [p.posX, p.posY, p.waitLag];
+    locs.frame = frame;
+    
+    if (frameLocs.length >= 100)
+      frameLocs.shift();
+    frameLocs.push(locs);
   }
-  */
+  
+  function verifyPlayerLocations(fr, verify, resp)
+  {
+    var minFrame = frame - frameLocs.length + 1;
+    if (fr < minFrame || fr > frame)
+    {
+      resp(false, "Frames out of reference");
+      return;
+    }
+    
+    function string(loc)
+    {
+      return '(' + loc[0] + ', ' + loc[1] + ') [' + loc[2] + ']';
+    }
+    
+    var locs = frameLocs[fr - minFrame];
+    if (locs.frame !== fr)
+    {
+      resp(false, locs.frame + " != " + fr);
+      return;
+    }
+    for (var num in verify)
+    {
+      if (locs[num][0] !== verify[num][0] || locs[num][1] !== verify[num][1] || locs[num][2] !== verify[num][2])
+      {
+        resp(false, 'P' + num +  ' ' + string(locs[num]) + ' !== ' + string(verify[num]));
+        return;
+      }
+    }
+    
+    resp(true);
+  }
+  
   function tick() {
-    //if (readyTick && ready === players.length)
-    //{
-    //  ready = 0;
-    //  readyTick = false;
-    //}else
-    //  return;
     
     //TODO: notify those players that this server automatically drops out.
-    var snews = newPlayers.map(function(val) {return val.serialData();});
+    var splayers = players.map(function(val) {return val.serialData();});
+    var snews = newPlayers.map(function(val) {
+      //Emit game stats.
+      val.client.emit("game", {
+        "num": val.num,
+        "gameid": id,
+        "frame": frame,
+        "players": splayers,
+        "grid": gridSerialData(grid, players),
+        "colors": colors
+      });
+      return val.serialData();
+    });
     var moves = players.map(function(val) {
       //Account for race condition (when heading is set after emitting frames, and before updating).
       val.heading = val.tmpHeading;
       return {num: val.num, left: !!val.disconnected, heading: val.heading};
     });
+    
+    update();
     
     var data = {frame: frame + 1, moves: moves};
     if (snews.length > 0)
@@ -186,45 +226,25 @@ function Game(id)
       newPlayers = [];
     }
     
-    //TODO: send a "good-bye" frame to the dead players. Just in case.
-    players.forEach(function(val) {
-      if (val.num === 1) //GHOST PLAYER
-      {
-        var splayers = players.map(function(val) {return val.serialData();});
-        val.client.emit("game", {
-          "num": val.num,
-          "gameid": id,
-          "frame": frame,
-          "players": splayers,
-          "grid": gridSerialData(grid, players),
-          "colors": colors
-        });
-      }
-      else
-      {
-        val.client.emit("notifyFrame", data, function() {
-          //playerReady(val, waitFrame);
-        });
-      }
-    });
+    for (var pl of players)
+      pl.client.emit("notifyFrame", data);
     
     frame++;
-    setTimeout(update, 1);
+    pushPlayerLocations();
   }
   
-  this.tickFrame = function() {
-    //readyTick = true;
-    tick();
-  };
+  this.tickFrame = tick;
   
   function update()
   {
     var dead = [];
-    core.updateFrame(grid, players, newPlayerFrames, dead, undefined, frame);
-    dead.forEach(function(val) { 
-      console.log(val.name + " died.");
-      //val.client.disconnect(true); 
-    });
+    core.updateFrame(grid, players, dead);
+    for (var pl of dead)
+    {
+      //TODO: send a "good-bye" frame to the dead players. Just in case.
+      console.log(pl.name + " died.");
+      pl.client.disconnect(true); 
+    }
   }
 }
 

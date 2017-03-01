@@ -5,6 +5,7 @@ var consts = require("./game-consts.js");
 
 var GRID_SIZE = consts.GRID_SIZE;
 var CELL_WIDTH = consts.CELL_WIDTH;
+var NEW_PLAYER_LAG = 60; //wait for a second at least.
 
 function defineGetter(getter) {
   return {
@@ -291,13 +292,17 @@ function fillTail(data)
 
 function floodFill(data, grid, row, col, been)
 {
-  var coords = [];
-  var filled = new Stack(40000);
-  var surrounded = true;
-  
   function onTail(c) { return data.tailGrid[c[0]] && data.tailGrid[c[0]][c[1]]; }
   
-  coords.push([row, col]);
+  var start = [row, col];
+  if (grid.isOutOfBounds(r, c) || been.get(row, col) || onTail(start) || grid.get(row, col) === data.player)
+      return; //Avoid allocating too many resources.
+  
+  var coords = [];
+  var filled = new Stack(GRID_SIZE * GRID_SIZE + 1);
+  var surrounded = true;
+  
+  coords.push(start);
   while (coords.length > 0)
   {
     var coord = coords.shift();
@@ -357,6 +362,7 @@ function Player(isClient, grid, sdata) {
   data.posX = sdata.posX;
   data.posY = sdata.posY;
   this.heading = data.currentHeading = sdata.currentHeading; //0 is up, 1 is right, 2 is down, 3 is left.
+  data.waitLag = sdata.waitLag || 0;
   data.dead = false;
   
   //Only need colors for client side.
@@ -386,7 +392,7 @@ function Player(isClient, grid, sdata) {
   
   //Instance methods.
   this.move = move.bind(this, data);
-  this.die = function() { if (data.num !== 1) /* GHOST PLAYER */ data.dead = true;};
+  this.die = function() { data.dead = true;};
   this.serialData = function() {
     return {
       num: data.num,
@@ -394,12 +400,13 @@ function Player(isClient, grid, sdata) {
       posX: data.posX,
       posY: data.posY,
       currentHeading: data.currentHeading,
-      tail: data.tail.serialData()
+      tail: data.tail.serialData(),
+      waitLag: data.waitLag
     };
   };
   
   //Read-only Properties.
-  defineAccessorProperties(this, data, "currentHeading", "dead", "name", "num", "posX", "posY", "grid", "tail");
+  defineAccessorProperties(this, data, "currentHeading", "dead", "name", "num", "posX", "posY", "grid", "tail", "waitLag");
   Object.defineProperties(this, {
     row: defineGetter(function() { return calcRow(data); }),
     col: defineGetter(function() { return calcCol(data); })
@@ -453,12 +460,15 @@ Player.prototype.render = function(ctx, fade)
 };
 
 
-function move(data, frame)
+function move(data)
 {
-  //console.log("P" + this.num + ": " + frame + ": " + this.heading);
+  if (data.waitLag < NEW_PLAYER_LAG)
+  {
+    data.waitLag++;
+    return;
+  }
   
   //Move to new position.
-  var prevX = this.posX, prevY = this.posY;
   var heading = this.heading;
   if (this.posX % CELL_WIDTH !== 0 || this.posY % CELL_WIDTH !== 0)
     heading = data.currentHeading;
@@ -476,12 +486,6 @@ function move(data, frame)
   var row = this.row, col = this.col;
   if (data.grid.isOutOfBounds(row, col))
   {
-    if (data.num === 1) /* GHOST PLAYER */
-    {
-      prevX = this.posX;
-      prevY = this.posY;
-      return;
-    }
     data.dead = true;
     return;
   }

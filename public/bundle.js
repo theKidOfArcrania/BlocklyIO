@@ -406,6 +406,7 @@ function connectServer() {
       renderer.addPlayer(pl);
     });
     user = renderer.getPlayerFromNum(data.num);
+    if (!user) throw new Error();
     renderer.setUser(user);
     
     //Load grid.
@@ -422,7 +423,7 @@ function connectServer() {
   });
   
   var waiting = false;
-  socket.on('notifyFrame', function(data, fn) {
+  socket.on('notifyFrame', function(data) {
     if (timeout != undefined)
       clearTimeout(timeout);
     
@@ -435,6 +436,7 @@ function connectServer() {
       socket.emit('requestFrame'); //Restore data.
       waiting = true;
       return;
+      //TODO: cache frames when this happen.
     }
     
     frame++;
@@ -470,6 +472,19 @@ function connectServer() {
     
     renderer.update(frame);
     
+    var locs = {};
+    for (var i = 0; i < renderer.playerSize(); i++)
+    {
+      var p = renderer.getPlayer(i);
+      locs[p.num] = [p.posX, p.posY, p.waitLag];
+    }
+    socket.emit("verify", {
+      frame: frame,
+      locs: locs
+    }, function(frame, success, msg) {
+      if (!success) console.error(frame + ": " + msg);
+    }.bind(this, frame));
+    
     dirty = true;
     requestAnimationFrame(function() {
       paintLoop();
@@ -477,8 +492,7 @@ function connectServer() {
     timeout = setTimeout(function() {
       console.warn("Server has timed-out. Disconnecting.");
       socket.disconnect();
-    }, 500);
-    fn();
+    }, 3000);
   });
   
   socket.on('disconnect', function(){
@@ -547,7 +561,6 @@ Object.defineProperties(module.exports, consts);
 },{}],6:[function(require,module,exports){
 var ANIMATE_FRAMES = 24;
 var CELL_WIDTH = 40;
-var NEW_PLAYER_LAG = 60; //wait for a second at least.
 
 //TODO: remove constants.
 exports.initPlayer = function(grid, player)
@@ -557,7 +570,7 @@ exports.initPlayer = function(grid, player)
       if (!grid.isOutOfBounds(dr + player.row, dc + player.col))
         grid.set(dr + player.row, dc + player.col, player);
 };
-exports.updateFrame = function(grid, players, newPlayerFrames, dead, notifyKill, frame)
+exports.updateFrame = function(grid, players, dead, notifyKill)
 {
   var adead = [];
   if (dead instanceof Array)
@@ -571,15 +584,7 @@ exports.updateFrame = function(grid, players, newPlayerFrames, dead, notifyKill,
   
   //Move players.  
   var tmp = players.filter(function(val) {
-    if (!newPlayerFrames[val.num])
-      newPlayerFrames[val.num] = 0;
-    
-    if (newPlayerFrames[val.num] < ANIMATE_FRAMES + NEW_PLAYER_LAG)
-      newPlayerFrames[val.num]++;
-    else
-      //TODO: remove frame
-      val.move(frame);
-    
+    val.move();
     if (val.dead)
       adead.push(val);
     return !val.dead;
@@ -649,12 +654,12 @@ exports.updateFrame = function(grid, players, newPlayerFrames, dead, notifyKill,
   }
   
   tmp = tmp.filter(function(val, i) {
-    if (removing[i] && val.num !== 1) /** GHOST PLAYER **/
+    if (removing[i])
     {
       adead.push(val);
       val.die();
     }
-    return !removing[i] || val.num === 1;
+    return !removing[i];
   });
   players.length = tmp.length;
   for (var i = 0; i < tmp.length; i++)
@@ -729,7 +734,7 @@ $(function () {
 
 
 var allowAnimation = true;
-var animateGrid, players, allPlayers, newPlayerFrames, playerPortion, grid, 
+var animateGrid, players, allPlayers, playerPortion, grid, 
   animateTo, offset, user, lagPortion, portionSpeed, zoom, kills, showedDead;
 
 grid = new Grid(GRID_SIZE, function(row, col, before, after) {
@@ -755,7 +760,6 @@ function init() {
   
   players = [];
   allPlayers = [];
-  newPlayerFrames = [];
   playerPortion = [];
   
   animateTo = [0, 0];
@@ -781,23 +785,6 @@ function paintGridBorder(ctx)
   ctx.fillRect(-BORDER_WIDTH, -BORDER_WIDTH, gridWidth + BORDER_WIDTH * 2, BORDER_WIDTH);
   ctx.fillRect(gridWidth, 0, BORDER_WIDTH, gridWidth);
   ctx.fillRect(-BORDER_WIDTH, gridWidth, gridWidth + BORDER_WIDTH * 2, BORDER_WIDTH);
-}
-
-function paintGridLines(ctx)
-{
-  ctx.fillStyle = 'lightgray';
-  ctx.beginPath();
-  for (var x = modRotate(-offset[0], CELL_WIDTH); x < gameWidth; x += CELL_WIDTH)
-  {
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, gameHeight);
-  }
-  for (var y = modRotate(-offset[1], CELL_WIDTH); y < gameHeight; y+= CELL_WIDTH)
-  {
-    ctx.moveTo(0, y);
-    ctx.lineTo(gameWidth, y);
-  }
-  ctx.stroke();
 }
 
 function paintGrid(ctx)
@@ -900,6 +887,7 @@ function paintGrid(ctx)
   }
 }
 
+
 function paintUIBar(ctx)
 {
   //UI Bar background
@@ -941,10 +929,37 @@ function paintUIBar(ctx)
     if (a.portion === b.portion) return a.player.num - b.player.num;
     else return b.portion - a.portion;
   });
-  
+ 
   var rank = sorted.findIndex(function(val) {return val.player === user});
   ctx.fillText("Rank: " + (rank === -1 ? "--" : rank + 1) + " of " + sorted.length, 
   ctx.measureText(killsText).width + killsOffset + 20, CELL_WIDTH - 5);
+  
+  //Show leaderboard.
+  var maxPortion = sorted[0] ? sorted[0].portion : 0;
+  var leaderboardNum = Math.min(5, sorted.length);
+  for (var i = 0; i < leaderboardNum; i++)
+  {
+    var player = sorted[i].player;
+    var name = player.name;
+    var portion = sorted[i].portion / maxPortion;
+    
+    var nameWidth = ctx.measureText(name).width;
+    barSize = Math.ceil((BAR_WIDTH - MIN_BAR_WIDTH) * portion + MIN_BAR_WIDTH);
+    var barX = canvasWidth - barSize;
+    var barY = BAR_HEIGHT * (i + 1);
+    
+    ctx.fillStyle = 'rgba(10, 10, 10, .3)';
+    ctx.fillRect(barX - 10, barY, barSize + 10, CELL_WIDTH + 10);
+    ctx.fillStyle = player.baseColor.rgbString();
+    ctx.fillRect(barX, barY, barSize, CELL_WIDTH);
+    ctx.fillStyle = player.shadowColor.rgbString();
+    ctx.fillRect(barX, barY + CELL_WIDTH, barSize, SHADOW_OFFSET);
+    
+    ctx.fillStyle = "black";
+    ctx.fillText(name, barX - nameWidth - 5, barY + CELL_WIDTH - 10);
+    
+  }
+  
 }
 
 //TODO: depict leaderboard.
@@ -966,7 +981,7 @@ function paint(ctx)
   
   paintGrid(ctx);
   players.forEach(function (p) {
-    var fr = newPlayerFrames[p.num] || 0;
+    var fr = p.waitLag;
     if (fr < ANIMATE_FRAMES)
       p.render(ctx, fr / ANIMATE_FRAMES);
     else
@@ -1035,11 +1050,11 @@ function update(frame) {
   portionSpeed = Math.abs(userPortion - lagPortion) / ANIMATE_FRAMES;
   
   var dead = [];
-  core.updateFrame(grid, players, newPlayerFrames, dead, function addKill(killer, other)
+  core.updateFrame(grid, players, dead, function addKill(killer, other)
   {
     if (players[killer] === user && killer !== other)
       kills++;
-  }, frame);
+  });
   dead.forEach(function(val) {
     console.log(val.name + " is dead");
     allPlayers[val.num] = undefined;
@@ -1051,15 +1066,6 @@ function update(frame) {
 }
 
 //Helper methods.
-function modRotate(val, mod)
-{
-  var res = val % mod;
-  if (res >= 0)
-    return res;
-  else
-    return mod + res;
-}
-
 function centerOnPlayer(player, pos)
 {
   var xOff = Math.floor(player.posX - (gameWidth / zoom - CELL_WIDTH) / 2);
@@ -1101,7 +1107,6 @@ module.exports = exports = {
     if (allPlayers[player.num])
       return; //Already added.
     allPlayers[player.num] = players[players.length] = player;
-    newPlayerFrames[player.num] = 0;
     playerPortion[player.num] = 0;
     return players.length - 1;
   },
@@ -8975,6 +8980,7 @@ var consts = require("./game-consts.js");
 
 var GRID_SIZE = consts.GRID_SIZE;
 var CELL_WIDTH = consts.CELL_WIDTH;
+var NEW_PLAYER_LAG = 60; //wait for a second at least.
 
 function defineGetter(getter) {
   return {
@@ -9261,13 +9267,17 @@ function fillTail(data)
 
 function floodFill(data, grid, row, col, been)
 {
-  var coords = [];
-  var filled = new Stack(40000);
-  var surrounded = true;
-  
   function onTail(c) { return data.tailGrid[c[0]] && data.tailGrid[c[0]][c[1]]; }
   
-  coords.push([row, col]);
+  var start = [row, col];
+  if (grid.isOutOfBounds(r, c) || been.get(row, col) || onTail(start) || grid.get(row, col) === data.player)
+      return; //Avoid allocating too many resources.
+  
+  var coords = [];
+  var filled = new Stack(GRID_SIZE * GRID_SIZE + 1);
+  var surrounded = true;
+  
+  coords.push(start);
   while (coords.length > 0)
   {
     var coord = coords.shift();
@@ -9327,6 +9337,7 @@ function Player(isClient, grid, sdata) {
   data.posX = sdata.posX;
   data.posY = sdata.posY;
   this.heading = data.currentHeading = sdata.currentHeading; //0 is up, 1 is right, 2 is down, 3 is left.
+  data.waitLag = sdata.waitLag || 0;
   data.dead = false;
   
   //Only need colors for client side.
@@ -9356,7 +9367,7 @@ function Player(isClient, grid, sdata) {
   
   //Instance methods.
   this.move = move.bind(this, data);
-  this.die = function() { if (data.num !== 1) /* GHOST PLAYER */ data.dead = true;};
+  this.die = function() { data.dead = true;};
   this.serialData = function() {
     return {
       num: data.num,
@@ -9364,12 +9375,13 @@ function Player(isClient, grid, sdata) {
       posX: data.posX,
       posY: data.posY,
       currentHeading: data.currentHeading,
-      tail: data.tail.serialData()
+      tail: data.tail.serialData(),
+      waitLag: data.waitLag
     };
   };
   
   //Read-only Properties.
-  defineAccessorProperties(this, data, "currentHeading", "dead", "name", "num", "posX", "posY", "grid", "tail");
+  defineAccessorProperties(this, data, "currentHeading", "dead", "name", "num", "posX", "posY", "grid", "tail", "waitLag");
   Object.defineProperties(this, {
     row: defineGetter(function() { return calcRow(data); }),
     col: defineGetter(function() { return calcCol(data); })
@@ -9423,12 +9435,15 @@ Player.prototype.render = function(ctx, fade)
 };
 
 
-function move(data, frame)
+function move(data)
 {
-  //console.log("P" + this.num + ": " + frame + ": " + this.heading);
+  if (data.waitLag < NEW_PLAYER_LAG)
+  {
+    data.waitLag++;
+    return;
+  }
   
   //Move to new position.
-  var prevX = this.posX, prevY = this.posY;
   var heading = this.heading;
   if (this.posX % CELL_WIDTH !== 0 || this.posY % CELL_WIDTH !== 0)
     heading = data.currentHeading;
@@ -9446,12 +9461,6 @@ function move(data, frame)
   var row = this.row, col = this.col;
   if (data.grid.isOutOfBounds(row, col))
   {
-    if (data.num === 1) /* GHOST PLAYER */
-    {
-      prevX = this.posX;
-      prevY = this.posY;
-      return;
-    }
     data.dead = true;
     return;
   }

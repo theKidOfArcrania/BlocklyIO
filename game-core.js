@@ -1,6 +1,5 @@
 var ANIMATE_FRAMES = 24;
 var CELL_WIDTH = 40;
-var NEW_PLAYER_LAG = 60; //wait for a second at least.
 
 //TODO: remove constants.
 exports.initPlayer = function(grid, player)
@@ -10,7 +9,7 @@ exports.initPlayer = function(grid, player)
       if (!grid.isOutOfBounds(dr + player.row, dc + player.col))
         grid.set(dr + player.row, dc + player.col, player);
 };
-exports.updateFrame = function(grid, players, newPlayerFrames, dead, notifyKill, frame)
+exports.updateFrame = function(grid, players, dead, notifyKill)
 {
   var adead = [];
   if (dead instanceof Array)
@@ -24,15 +23,7 @@ exports.updateFrame = function(grid, players, newPlayerFrames, dead, notifyKill,
   
   //Move players.  
   var tmp = players.filter(function(val) {
-    if (!newPlayerFrames[val.num])
-      newPlayerFrames[val.num] = 0;
-    
-    if (newPlayerFrames[val.num] < ANIMATE_FRAMES + NEW_PLAYER_LAG)
-      newPlayerFrames[val.num]++;
-    else
-      //TODO: remove frame
-      val.move(frame);
-    
+    val.move();
     if (val.dead)
       adead.push(val);
     return !val.dead;
@@ -102,12 +93,12 @@ exports.updateFrame = function(grid, players, newPlayerFrames, dead, notifyKill,
   }
   
   tmp = tmp.filter(function(val, i) {
-    if (removing[i] && val.num !== 1) /** GHOST PLAYER **/
+    if (removing[i])
     {
       adead.push(val);
       val.die();
     }
-    return !removing[i] || val.num === 1;
+    return !removing[i];
   });
   players.length = tmp.length;
   for (var i = 0; i < tmp.length; i++)

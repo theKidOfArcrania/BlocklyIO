@@ -37,7 +37,7 @@ $(function () {
 
 
 var allowAnimation = true;
-var animateGrid, players, allPlayers, newPlayerFrames, playerPortion, grid, 
+var animateGrid, players, allPlayers, playerPortion, grid, 
   animateTo, offset, user, lagPortion, portionSpeed, zoom, kills, showedDead;
 
 grid = new Grid(GRID_SIZE, function(row, col, before, after) {
@@ -63,7 +63,6 @@ function init() {
   
   players = [];
   allPlayers = [];
-  newPlayerFrames = [];
   playerPortion = [];
   
   animateTo = [0, 0];
@@ -89,23 +88,6 @@ function paintGridBorder(ctx)
   ctx.fillRect(-BORDER_WIDTH, -BORDER_WIDTH, gridWidth + BORDER_WIDTH * 2, BORDER_WIDTH);
   ctx.fillRect(gridWidth, 0, BORDER_WIDTH, gridWidth);
   ctx.fillRect(-BORDER_WIDTH, gridWidth, gridWidth + BORDER_WIDTH * 2, BORDER_WIDTH);
-}
-
-function paintGridLines(ctx)
-{
-  ctx.fillStyle = 'lightgray';
-  ctx.beginPath();
-  for (var x = modRotate(-offset[0], CELL_WIDTH); x < gameWidth; x += CELL_WIDTH)
-  {
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, gameHeight);
-  }
-  for (var y = modRotate(-offset[1], CELL_WIDTH); y < gameHeight; y+= CELL_WIDTH)
-  {
-    ctx.moveTo(0, y);
-    ctx.lineTo(gameWidth, y);
-  }
-  ctx.stroke();
 }
 
 function paintGrid(ctx)
@@ -208,6 +190,7 @@ function paintGrid(ctx)
   }
 }
 
+
 function paintUIBar(ctx)
 {
   //UI Bar background
@@ -249,10 +232,37 @@ function paintUIBar(ctx)
     if (a.portion === b.portion) return a.player.num - b.player.num;
     else return b.portion - a.portion;
   });
-  
+ 
   var rank = sorted.findIndex(function(val) {return val.player === user});
   ctx.fillText("Rank: " + (rank === -1 ? "--" : rank + 1) + " of " + sorted.length, 
   ctx.measureText(killsText).width + killsOffset + 20, CELL_WIDTH - 5);
+  
+  //Show leaderboard.
+  var maxPortion = sorted[0] ? sorted[0].portion : 0;
+  var leaderboardNum = Math.min(5, sorted.length);
+  for (var i = 0; i < leaderboardNum; i++)
+  {
+    var player = sorted[i].player;
+    var name = player.name;
+    var portion = sorted[i].portion / maxPortion;
+    
+    var nameWidth = ctx.measureText(name).width;
+    barSize = Math.ceil((BAR_WIDTH - MIN_BAR_WIDTH) * portion + MIN_BAR_WIDTH);
+    var barX = canvasWidth - barSize;
+    var barY = BAR_HEIGHT * (i + 1);
+    
+    ctx.fillStyle = 'rgba(10, 10, 10, .3)';
+    ctx.fillRect(barX - 10, barY, barSize + 10, CELL_WIDTH + 10);
+    ctx.fillStyle = player.baseColor.rgbString();
+    ctx.fillRect(barX, barY, barSize, CELL_WIDTH);
+    ctx.fillStyle = player.shadowColor.rgbString();
+    ctx.fillRect(barX, barY + CELL_WIDTH, barSize, SHADOW_OFFSET);
+    
+    ctx.fillStyle = "black";
+    ctx.fillText(name, barX - nameWidth - 5, barY + CELL_WIDTH - 10);
+    
+  }
+  
 }
 
 //TODO: depict leaderboard.
@@ -274,7 +284,7 @@ function paint(ctx)
   
   paintGrid(ctx);
   players.forEach(function (p) {
-    var fr = newPlayerFrames[p.num] || 0;
+    var fr = p.waitLag;
     if (fr < ANIMATE_FRAMES)
       p.render(ctx, fr / ANIMATE_FRAMES);
     else
@@ -343,11 +353,11 @@ function update(frame) {
   portionSpeed = Math.abs(userPortion - lagPortion) / ANIMATE_FRAMES;
   
   var dead = [];
-  core.updateFrame(grid, players, newPlayerFrames, dead, function addKill(killer, other)
+  core.updateFrame(grid, players, dead, function addKill(killer, other)
   {
     if (players[killer] === user && killer !== other)
       kills++;
-  }, frame);
+  });
   dead.forEach(function(val) {
     console.log(val.name + " is dead");
     allPlayers[val.num] = undefined;
@@ -359,15 +369,6 @@ function update(frame) {
 }
 
 //Helper methods.
-function modRotate(val, mod)
-{
-  var res = val % mod;
-  if (res >= 0)
-    return res;
-  else
-    return mod + res;
-}
-
 function centerOnPlayer(player, pos)
 {
   var xOff = Math.floor(player.posX - (gameWidth / zoom - CELL_WIDTH) / 2);
@@ -409,7 +410,6 @@ module.exports = exports = {
     if (allPlayers[player.num])
       return; //Already added.
     allPlayers[player.num] = players[players.length] = player;
-    newPlayerFrames[player.num] = 0;
     playerPortion[player.num] = 0;
     return players.length - 1;
   },
