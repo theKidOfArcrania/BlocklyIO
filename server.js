@@ -1,3 +1,6 @@
+var hostname = process.argv[2] || "0.0.0.0";
+var port = parseInt(process.argv[3]) || 80;
+
 var finalhandler = require('finalhandler');
 var http = require('http');
 var serveStatic = require('serve-static');
@@ -16,7 +19,7 @@ var server = http.createServer(function onRequest (req, res) {
 });
 
 // Listen
-server.listen(8080);
+server.listen(port, hostname);
 
 server = http.createServer();
 var io = require('socket.io')(server);
