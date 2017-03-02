@@ -295,7 +295,7 @@ function floodFill(data, grid, row, col, been)
   function onTail(c) { return data.tailGrid[c[0]] && data.tailGrid[c[0]][c[1]]; }
   
   var start = [row, col];
-  if (grid.isOutOfBounds(r, c) || been.get(row, col) || onTail(start) || grid.get(row, col) === data.player)
+  if (grid.isOutOfBounds(row, col) || been.get(row, col) || onTail(start) || grid.get(row, col) === data.player)
       return; //Avoid allocating too many resources.
   
   var coords = [];
@@ -351,13 +351,12 @@ function hitsTail(data, other)
 var SPEED = 5;
 var SHADOW_OFFSET = 10;
 
-function Player(isClient, grid, sdata) {
+function Player(grid, sdata) {
   var data = {};
   
   //Parameters
   data.num = sdata.num;
-  data.name = sdata.name || "Player " + (data.num + 1);
-  data.isCient = isClient;
+  data.name = sdata.name || ""; //|| "Player " + (data.num + 1);
   data.grid = grid;
   data.posX = sdata.posX;
   data.posY = sdata.posY;
@@ -366,19 +365,16 @@ function Player(isClient, grid, sdata) {
   data.dead = false;
   
   //Only need colors for client side.
-  if (isClient)
+  var base;
+  if (sdata.base)
+    base = this.baseColor = sdata.base instanceof Color ? sdata.base : Color.fromData(sdata.base);
+  else
   {
-    var base;
-    if (sdata.base)
-      base = this.baseColor = Color.fromData(sdata.base);
-    else
-    {
-      var hue = Math.random();
-      this.baseColor = base = new Color(hue, .8, .5);
-    }
-    this.shadowColor = base.deriveLumination(-.3);
-    this.tailColor = base.deriveLumination(.2).deriveAlpha(.5);
+    var hue = Math.random();
+    this.baseColor = base = new Color(hue, .8, .5);
   }
+  this.shadowColor = base.deriveLumination(-.3);
+  this.tailColor = base.deriveLumination(.2).deriveAlpha(.5);
   
   //Tail requires special handling.
   this.grid = grid; //Temporary
@@ -395,6 +391,7 @@ function Player(isClient, grid, sdata) {
   this.die = function() { data.dead = true;};
   this.serialData = function() {
     return {
+      base: this.baseColor,
       num: data.num,
       name: data.name,
       posX: data.posX,

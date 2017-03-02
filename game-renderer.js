@@ -1,4 +1,5 @@
 /* global $ */
+var Rolling = require("./rolling.js");
 var Color = require("./color.js");
 var Grid = require("./grid.js");
 var consts = require("./game-consts.js");
@@ -37,7 +38,7 @@ $(function () {
 
 
 var allowAnimation = true;
-var animateGrid, players, allPlayers, playerPortion, grid, 
+var animateGrid, players, allPlayers, playerPortion, portionsRolling, grid, 
   animateTo, offset, user, lagPortion, portionSpeed, zoom, kills, showedDead;
 
 grid = new Grid(GRID_SIZE, function(row, col, before, after) {
@@ -64,6 +65,7 @@ function init() {
   players = [];
   allPlayers = [];
   playerPortion = [];
+  portionsRolling = [];
   
   animateTo = [0, 0];
   offset = [0, 0];
@@ -200,7 +202,7 @@ function paintUIBar(ctx)
   var barOffset;
   ctx.fillStyle = "white";
   ctx.font = "24px Changa";
-  barOffset = ctx.measureText(user ? user.name : "").width + 20;
+  barOffset = (user && user.name) ? (ctx.measureText(user.name).width + 20) : 0;
   ctx.fillText(user ? user.name : "", 5, CELL_WIDTH - 5);
   
   //Draw filled bar.
@@ -213,6 +215,7 @@ function paintUIBar(ctx)
   ctx.fillStyle = user ? user.shadowColor.rgbString() : "";
   ctx.fillRect(barOffset, CELL_WIDTH, barSize, SHADOW_OFFSET);
   
+  //TODO: dont reset kill count and zoom when we request frames.
   //Percentage
   ctx.fillStyle = "white";
   ctx.font = "18px Changa";
@@ -243,29 +246,33 @@ function paintUIBar(ctx)
   for (var i = 0; i < leaderboardNum; i++)
   {
     var player = sorted[i].player;
-    var name = player.name;
+    var name = player.name || "Unnamed";
     var portion = sorted[i].portion / maxPortion;
     
     var nameWidth = ctx.measureText(name).width;
     barSize = Math.ceil((BAR_WIDTH - MIN_BAR_WIDTH) * portion + MIN_BAR_WIDTH);
     var barX = canvasWidth - barSize;
     var barY = BAR_HEIGHT * (i + 1);
+    var offset = i == 0 ? 10 : 0;
     
     ctx.fillStyle = 'rgba(10, 10, 10, .3)';
-    ctx.fillRect(barX - 10, barY, barSize + 10, CELL_WIDTH + 10);
+    ctx.fillRect(barX - 10, barY + 10 - offset, barSize + 10, BAR_HEIGHT + offset);
     ctx.fillStyle = player.baseColor.rgbString();
     ctx.fillRect(barX, barY, barSize, CELL_WIDTH);
     ctx.fillStyle = player.shadowColor.rgbString();
     ctx.fillRect(barX, barY + CELL_WIDTH, barSize, SHADOW_OFFSET);
     
     ctx.fillStyle = "black";
-    ctx.fillText(name, barX - nameWidth - 5, barY + CELL_WIDTH - 10);
+    ctx.fillText(name, barX - nameWidth - 10, barY + 27);
     
+    var percentage = (sorted[i].portion / GRID_SIZE / GRID_SIZE * 100).toFixed(3) + "%";
+    var metrics = ctx.measureText(percentage);
+    ctx.fillStyle = "white";
+    ctx.fillText(percentage, barX + 5, barY + CELL_WIDTH - 5);
   }
   
 }
 
-//TODO: depict leaderboard.
 function paint(ctx)
 {
   ctx.fillStyle = 'whitesmoke';
@@ -309,7 +316,7 @@ function paintDoubleBuff()
   ctx.drawImage(offscreenCanvas, 0, 0);
 }
 
-function update(frame) {
+function update() {
   
   //Change grid offsets.
   for (var i = 0; i <= 1; i++)
@@ -359,12 +366,12 @@ function update(frame) {
       kills++;
   });
   dead.forEach(function(val) {
-    console.log(val.name + " is dead");
-    allPlayers[val.num] = undefined;
+    console.log(val.name || "Unnamed" + " is dead");
+    delete allPlayers[val.num];
+    delete portionsRolling[val.num];
   });
   
   //TODO: animate player is dead. (maybe explosion?), and tail rewinds itself.
-  //TODO: show when this player is dead
   if (user) centerOnPlayer(user, animateTo);
 }
 
@@ -373,8 +380,9 @@ function centerOnPlayer(player, pos)
 {
   var xOff = Math.floor(player.posX - (gameWidth / zoom - CELL_WIDTH) / 2);
   var yOff = Math.floor(player.posY - (gameHeight / zoom - CELL_WIDTH) / 2);
-  pos[0] = Math.max(Math.min(xOff, grid.size * CELL_WIDTH + BORDER_WIDTH * 2 - gameWidth / zoom), 0);
-  pos[1] = Math.max(Math.min(yOff, grid.size * CELL_WIDTH + BORDER_WIDTH * 2 - gameHeight / zoom), 0);
+  var gridWidth = grid.size * CELL_WIDTH + BORDER_WIDTH * 2;
+  pos[0] = Math.max(Math.min(xOff, gridWidth + BAR_WIDTH + 100 - gameWidth / zoom), 0);
+  pos[1] = Math.max(Math.min(yOff, gridWidth - gameHeight / zoom), 0);
 }
 
 function getBounceOffset(frame)
@@ -411,10 +419,12 @@ module.exports = exports = {
       return; //Already added.
     allPlayers[player.num] = players[players.length] = player;
     playerPortion[player.num] = 0;
+    portionsRolling = new Rolling(0, .2);
     return players.length - 1;
   },
-  //TODO: check index.
   getPlayer: function(ind) {
+    if (ind < 0 || ind >= players.length)
+      throw new RangeError("Player index out of bounds (" + ind + ").");
     return players[ind];
   },
   getPlayerFromNum: function(num) {

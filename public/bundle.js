@@ -341,17 +341,18 @@ $(document).keydown(function(e) {
         heading: newHeading
       }, function(success, msg) {
         if (!success)
-        {
-          //TODO: restore frames.
           console.error(msg);
-        }
       });
   }
   e.preventDefault();
 });
 
+var norun = false;
 window.run = run;
 function run() {
+  if (norun)
+    return; //Prevent multiple clicks.
+  norun = true;
   $("#begin").css("display: none");
   $("#begin").animate({
       opacity: 0
@@ -377,7 +378,10 @@ var grid = renderer.grid;
 var timeout = undefined;
 var dirty = false;
 var deadFrames = 0;
+var requesting = -1; //frame that we are requesting at.
+var frameCache = []; //Frames after our request.
 
+//TODO: check if we can connect to server.
 function connectServer() {
   io.j = [];
   io.sockets = [];
@@ -385,24 +389,18 @@ function connectServer() {
   socket.on('connect', function(){
     console.info("Connected to server.");
   });
-  var colors;
   socket.on('game', function(data) {
     if (timeout != undefined)
       clearTimeout(timeout);
+    
     //Initialize game.
     //TODO: display data.gameid --- game id #
     frame = data.frame;
     renderer.reset();
     
-    waiting = false;
-    
-    //Load colors.
-    colors = data.colors || [];
-    
     //Load players.
     data.players.forEach(function(p) {
-      p.base = colors[p.num];
-      var pl = new Player(true, grid, p);
+      var pl = new Player(grid, p);
       renderer.addPlayer(pl);
     });
     user = renderer.getPlayerFromNum(data.num);
@@ -420,79 +418,22 @@ function connectServer() {
     
     renderer.paint();
     frame = data.frame;
+    
+    if (requesting !== -1)
+    {
+      //Update those cache frames after we updated game.
+      var minFrame = requesting;
+      requesting = -1;
+      while (frameCache.length > frame - minFrame)
+        processFrame(frameCache[frame - minFrame]);
+      frameCache = [];
+    }
   });
   
-  var waiting = false;
-  socket.on('notifyFrame', function(data) {
-    if (timeout != undefined)
-      clearTimeout(timeout);
-    
-    if (waiting)
-      return;
-    
-    if (data.frame - 1 !== frame)
-    {
-      console.error("Frames don't match up!");
-      socket.emit('requestFrame'); //Restore data.
-      waiting = true;
-      return;
-      //TODO: cache frames when this happen.
-    }
-    
-    frame++;
-    if (data.newPlayers)
-    {
-      data.newPlayers.forEach(function(p) {
-        if (p.num === user.num)
-          return;
-        p.base = colors[p.num];
-        var pl = new Player(true, grid, p);
-        renderer.addPlayer(pl);
-        core.initPlayer(grid, pl);
-      });
-    }
-    
-    var found = new Array(renderer.playerSize());
-    data.moves.forEach(function(val, i) {
-      var player = renderer.getPlayerFromNum(val.num);
-      if (!player) return;
-      if (val.left) player.die();
-      found[i] = true;
-      player.heading = val.heading;
-    });
-    for (var i = 0; i < renderer.playerSize(); i++)
-    {
-      //Implicitly leaving game.
-      if (!found[i])
-      {
-        var player = renderer.getPlayer();
-        player && player.die();
-      }
-    }
-    
-    renderer.update(frame);
-    
-    var locs = {};
-    for (var i = 0; i < renderer.playerSize(); i++)
-    {
-      var p = renderer.getPlayer(i);
-      locs[p.num] = [p.posX, p.posY, p.waitLag];
-    }
-    socket.emit("verify", {
-      frame: frame,
-      locs: locs
-    }, function(frame, success, msg) {
-      if (!success) console.error(frame + ": " + msg);
-    }.bind(this, frame));
-    
-    dirty = true;
-    requestAnimationFrame(function() {
-      paintLoop();
-    });
-    timeout = setTimeout(function() {
-      console.warn("Server has timed-out. Disconnecting.");
-      socket.disconnect();
-    }, 3000);
+  socket.on('notifyFrame', processFrame);
+  
+  socket.on('dead', function() {
+    socket.disconnect(); //In case we didn't get the disconnect call.
   });
   
   socket.on('disconnect', function(){
@@ -501,13 +442,97 @@ function connectServer() {
     console.info("Server has disconnected. Creating new game.");
     socket.disconnect();
     user.die();
+    dirty = true;
     paintLoop();
     
     $("#begin").css("display: block");
     $("#begin").animate({
       opacity: .9999
-    }, 500);
+    }, 1000, function() {
+      norun = false;
+    });
   });
+}
+
+function processFrame(data)
+{
+  if (timeout != undefined)
+      clearTimeout(timeout);
+    
+  if (requesting !== -1 && requesting < data.frame)
+  {
+    frameCache.push(data);
+    return;
+  }
+  
+  if (data.frame - 1 !== frame)
+  {
+    console.error("Frames don't match up!");
+    socket.emit('requestFrame'); //Restore data.
+    requesting = data.frame;
+    frameCache.push(data);
+    return;
+  }
+  
+  frame++;
+  if (data.newPlayers)
+  {
+    data.newPlayers.forEach(function(p) {
+      if (p.num === user.num)
+        return;
+      var pl = new Player(grid, p);
+      renderer.addPlayer(pl);
+      core.initPlayer(grid, pl);
+    });
+  }
+  
+  var found = new Array(renderer.playerSize());
+  data.moves.forEach(function(val, i) {
+    var player = renderer.getPlayerFromNum(val.num);
+    if (!player) return;
+    if (val.left) player.die();
+    found[i] = true;
+    player.heading = val.heading;
+  });
+  for (var i = 0; i < renderer.playerSize(); i++)
+  {
+    //Implicitly leaving game.
+    if (!found[i])
+    {
+      var player = renderer.getPlayer();
+      player && player.die();
+    }
+  }
+  
+  renderer.update();
+  
+  var locs = {};
+  for (var i = 0; i < renderer.playerSize(); i++)
+  {
+    var p = renderer.getPlayer(i);
+    locs[p.num] = [p.posX, p.posY, p.waitLag];
+  }
+
+  socket.emit("verify", {
+    frame: frame,
+    locs: locs
+  }, function(frame, success, adviceFix, msg) {
+    if (!success && requesting === -1) 
+    {
+      console.error(frame + ": " + msg);
+      if (adviceFix)
+        socket.emit('requestFrame');
+    }
+  }.bind(this, frame));
+  
+  dirty = true;
+  requestAnimationFrame(function() {
+    paintLoop();
+  });
+  timeout = setTimeout(function() {
+    console.warn("Server has timed-out. Disconnecting.");
+    socket.disconnect();
+  }, 3000);
 }
 
 function paintLoop()
@@ -536,6 +561,7 @@ function paintLoop()
     socket.disconnect();
     deadFrames++;
     dirty = true;
+    renderer.update();
     requestAnimationFrame(paintLoop);
   }
 }
@@ -696,6 +722,7 @@ function area(player)
 }
 },{}],7:[function(require,module,exports){
 /* global $ */
+var Rolling = require("./rolling.js");
 var Color = require("./color.js");
 var Grid = require("./grid.js");
 var consts = require("./game-consts.js");
@@ -734,7 +761,7 @@ $(function () {
 
 
 var allowAnimation = true;
-var animateGrid, players, allPlayers, playerPortion, grid, 
+var animateGrid, players, allPlayers, playerPortion, portionsRolling, grid, 
   animateTo, offset, user, lagPortion, portionSpeed, zoom, kills, showedDead;
 
 grid = new Grid(GRID_SIZE, function(row, col, before, after) {
@@ -761,6 +788,7 @@ function init() {
   players = [];
   allPlayers = [];
   playerPortion = [];
+  portionsRolling = [];
   
   animateTo = [0, 0];
   offset = [0, 0];
@@ -897,7 +925,7 @@ function paintUIBar(ctx)
   var barOffset;
   ctx.fillStyle = "white";
   ctx.font = "24px Changa";
-  barOffset = ctx.measureText(user ? user.name : "").width + 20;
+  barOffset = (user && user.name) ? (ctx.measureText(user.name).width + 20) : 0;
   ctx.fillText(user ? user.name : "", 5, CELL_WIDTH - 5);
   
   //Draw filled bar.
@@ -910,6 +938,7 @@ function paintUIBar(ctx)
   ctx.fillStyle = user ? user.shadowColor.rgbString() : "";
   ctx.fillRect(barOffset, CELL_WIDTH, barSize, SHADOW_OFFSET);
   
+  //TODO: dont reset kill count and zoom when we request frames.
   //Percentage
   ctx.fillStyle = "white";
   ctx.font = "18px Changa";
@@ -940,29 +969,33 @@ function paintUIBar(ctx)
   for (var i = 0; i < leaderboardNum; i++)
   {
     var player = sorted[i].player;
-    var name = player.name;
+    var name = player.name || "Unnamed";
     var portion = sorted[i].portion / maxPortion;
     
     var nameWidth = ctx.measureText(name).width;
     barSize = Math.ceil((BAR_WIDTH - MIN_BAR_WIDTH) * portion + MIN_BAR_WIDTH);
     var barX = canvasWidth - barSize;
     var barY = BAR_HEIGHT * (i + 1);
+    var offset = i == 0 ? 10 : 0;
     
     ctx.fillStyle = 'rgba(10, 10, 10, .3)';
-    ctx.fillRect(barX - 10, barY, barSize + 10, CELL_WIDTH + 10);
+    ctx.fillRect(barX - 10, barY + 10 - offset, barSize + 10, BAR_HEIGHT + offset);
     ctx.fillStyle = player.baseColor.rgbString();
     ctx.fillRect(barX, barY, barSize, CELL_WIDTH);
     ctx.fillStyle = player.shadowColor.rgbString();
     ctx.fillRect(barX, barY + CELL_WIDTH, barSize, SHADOW_OFFSET);
     
     ctx.fillStyle = "black";
-    ctx.fillText(name, barX - nameWidth - 5, barY + CELL_WIDTH - 10);
+    ctx.fillText(name, barX - nameWidth - 10, barY + 27);
     
+    var percentage = (sorted[i].portion / GRID_SIZE / GRID_SIZE * 100).toFixed(3) + "%";
+    var metrics = ctx.measureText(percentage);
+    ctx.fillStyle = "white";
+    ctx.fillText(percentage, barX + 5, barY + CELL_WIDTH - 5);
   }
   
 }
 
-//TODO: depict leaderboard.
 function paint(ctx)
 {
   ctx.fillStyle = 'whitesmoke';
@@ -1006,7 +1039,7 @@ function paintDoubleBuff()
   ctx.drawImage(offscreenCanvas, 0, 0);
 }
 
-function update(frame) {
+function update() {
   
   //Change grid offsets.
   for (var i = 0; i <= 1; i++)
@@ -1056,12 +1089,12 @@ function update(frame) {
       kills++;
   });
   dead.forEach(function(val) {
-    console.log(val.name + " is dead");
-    allPlayers[val.num] = undefined;
+    console.log(val.name || "Unnamed" + " is dead");
+    delete allPlayers[val.num];
+    delete portionsRolling[val.num];
   });
   
   //TODO: animate player is dead. (maybe explosion?), and tail rewinds itself.
-  //TODO: show when this player is dead
   if (user) centerOnPlayer(user, animateTo);
 }
 
@@ -1070,8 +1103,9 @@ function centerOnPlayer(player, pos)
 {
   var xOff = Math.floor(player.posX - (gameWidth / zoom - CELL_WIDTH) / 2);
   var yOff = Math.floor(player.posY - (gameHeight / zoom - CELL_WIDTH) / 2);
-  pos[0] = Math.max(Math.min(xOff, grid.size * CELL_WIDTH + BORDER_WIDTH * 2 - gameWidth / zoom), 0);
-  pos[1] = Math.max(Math.min(yOff, grid.size * CELL_WIDTH + BORDER_WIDTH * 2 - gameHeight / zoom), 0);
+  var gridWidth = grid.size * CELL_WIDTH + BORDER_WIDTH * 2;
+  pos[0] = Math.max(Math.min(xOff, gridWidth + BAR_WIDTH + 100 - gameWidth / zoom), 0);
+  pos[1] = Math.max(Math.min(yOff, gridWidth - gameHeight / zoom), 0);
 }
 
 function getBounceOffset(frame)
@@ -1108,10 +1142,12 @@ module.exports = exports = {
       return; //Already added.
     allPlayers[player.num] = players[players.length] = player;
     playerPortion[player.num] = 0;
+    portionsRolling = new Rolling(0, .2);
     return players.length - 1;
   },
-  //TODO: check index.
   getPlayer: function(ind) {
+    if (ind < 0 || ind >= players.length)
+      throw new RangeError("Player index out of bounds (" + ind + ").");
     return players[ind];
   },
   getPlayerFromNum: function(num) {
@@ -1145,7 +1181,7 @@ Object.defineProperties(exports, {
     enumerable: true
   }
 });
-},{"./color.js":3,"./game-consts.js":5,"./game-core.js":6,"./grid.js":8}],8:[function(require,module,exports){
+},{"./color.js":3,"./game-consts.js":5,"./game-core.js":6,"./grid.js":8,"./rolling.js":57}],8:[function(require,module,exports){
 function Grid(size, changeCallback)
 {
   var grid = new Array(size);
@@ -9270,7 +9306,7 @@ function floodFill(data, grid, row, col, been)
   function onTail(c) { return data.tailGrid[c[0]] && data.tailGrid[c[0]][c[1]]; }
   
   var start = [row, col];
-  if (grid.isOutOfBounds(r, c) || been.get(row, col) || onTail(start) || grid.get(row, col) === data.player)
+  if (grid.isOutOfBounds(row, col) || been.get(row, col) || onTail(start) || grid.get(row, col) === data.player)
       return; //Avoid allocating too many resources.
   
   var coords = [];
@@ -9326,13 +9362,12 @@ function hitsTail(data, other)
 var SPEED = 5;
 var SHADOW_OFFSET = 10;
 
-function Player(isClient, grid, sdata) {
+function Player(grid, sdata) {
   var data = {};
   
   //Parameters
   data.num = sdata.num;
-  data.name = sdata.name || "Player " + (data.num + 1);
-  data.isCient = isClient;
+  data.name = sdata.name || ""; //|| "Player " + (data.num + 1);
   data.grid = grid;
   data.posX = sdata.posX;
   data.posY = sdata.posY;
@@ -9341,19 +9376,16 @@ function Player(isClient, grid, sdata) {
   data.dead = false;
   
   //Only need colors for client side.
-  if (isClient)
+  var base;
+  if (sdata.base)
+    base = this.baseColor = sdata.base instanceof Color ? sdata.base : Color.fromData(sdata.base);
+  else
   {
-    var base;
-    if (sdata.base)
-      base = this.baseColor = Color.fromData(sdata.base);
-    else
-    {
-      var hue = Math.random();
-      this.baseColor = base = new Color(hue, .8, .5);
-    }
-    this.shadowColor = base.deriveLumination(-.3);
-    this.tailColor = base.deriveLumination(.2).deriveAlpha(.5);
+    var hue = Math.random();
+    this.baseColor = base = new Color(hue, .8, .5);
   }
+  this.shadowColor = base.deriveLumination(-.3);
+  this.tailColor = base.deriveLumination(.2).deriveAlpha(.5);
   
   //Tail requires special handling.
   this.grid = grid; //Temporary
@@ -9370,6 +9402,7 @@ function Player(isClient, grid, sdata) {
   this.die = function() { data.dead = true;};
   this.serialData = function() {
     return {
+      base: this.baseColor,
       num: data.num,
       name: data.name,
       posX: data.posX,
@@ -9478,7 +9511,35 @@ function move(data)
 }
 
 module.exports = Player;
-},{"./color.js":3,"./game-consts.js":5,"./grid.js":8,"./stack.js":57}],57:[function(require,module,exports){
+},{"./color.js":3,"./game-consts.js":5,"./grid.js":8,"./stack.js":58}],57:[function(require,module,exports){
+
+function Rolling(value, maxSpeed)
+{
+  var lag = 0;
+  
+  if (!maxSpeed)
+    maxSpeed = 5;
+  
+  this.value = value;
+  
+  Object.defineProperty(this, "lag", {
+    get: function() { return lag; },
+    enumerable: true
+  });
+  this.update = function() {
+    var delta = value - lag;
+    var dir = Math.sign(delta);
+    var mag = Math.min(Math.abs(maxSpeed), Math.abs(delta));
+    
+    lag += mag * dir;
+    return lag;
+  }
+}
+
+module.exports = Rolling;
+
+
+},{}],58:[function(require,module,exports){
 
 
 function Stack(initSize)

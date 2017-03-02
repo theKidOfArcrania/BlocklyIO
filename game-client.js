@@ -55,17 +55,18 @@ $(document).keydown(function(e) {
         heading: newHeading
       }, function(success, msg) {
         if (!success)
-        {
-          //TODO: restore frames.
           console.error(msg);
-        }
       });
   }
   e.preventDefault();
 });
 
+var norun = false;
 window.run = run;
 function run() {
+  if (norun)
+    return; //Prevent multiple clicks.
+  norun = true;
   $("#begin").css("display: none");
   $("#begin").animate({
       opacity: 0
@@ -91,7 +92,10 @@ var grid = renderer.grid;
 var timeout = undefined;
 var dirty = false;
 var deadFrames = 0;
+var requesting = -1; //frame that we are requesting at.
+var frameCache = []; //Frames after our request.
 
+//TODO: check if we can connect to server.
 function connectServer() {
   io.j = [];
   io.sockets = [];
@@ -99,24 +103,18 @@ function connectServer() {
   socket.on('connect', function(){
     console.info("Connected to server.");
   });
-  var colors;
   socket.on('game', function(data) {
     if (timeout != undefined)
       clearTimeout(timeout);
+    
     //Initialize game.
     //TODO: display data.gameid --- game id #
     frame = data.frame;
     renderer.reset();
     
-    waiting = false;
-    
-    //Load colors.
-    colors = data.colors || [];
-    
     //Load players.
     data.players.forEach(function(p) {
-      p.base = colors[p.num];
-      var pl = new Player(true, grid, p);
+      var pl = new Player(grid, p);
       renderer.addPlayer(pl);
     });
     user = renderer.getPlayerFromNum(data.num);
@@ -134,79 +132,22 @@ function connectServer() {
     
     renderer.paint();
     frame = data.frame;
+    
+    if (requesting !== -1)
+    {
+      //Update those cache frames after we updated game.
+      var minFrame = requesting;
+      requesting = -1;
+      while (frameCache.length > frame - minFrame)
+        processFrame(frameCache[frame - minFrame]);
+      frameCache = [];
+    }
   });
   
-  var waiting = false;
-  socket.on('notifyFrame', function(data) {
-    if (timeout != undefined)
-      clearTimeout(timeout);
-    
-    if (waiting)
-      return;
-    
-    if (data.frame - 1 !== frame)
-    {
-      console.error("Frames don't match up!");
-      socket.emit('requestFrame'); //Restore data.
-      waiting = true;
-      return;
-      //TODO: cache frames when this happen.
-    }
-    
-    frame++;
-    if (data.newPlayers)
-    {
-      data.newPlayers.forEach(function(p) {
-        if (p.num === user.num)
-          return;
-        p.base = colors[p.num];
-        var pl = new Player(true, grid, p);
-        renderer.addPlayer(pl);
-        core.initPlayer(grid, pl);
-      });
-    }
-    
-    var found = new Array(renderer.playerSize());
-    data.moves.forEach(function(val, i) {
-      var player = renderer.getPlayerFromNum(val.num);
-      if (!player) return;
-      if (val.left) player.die();
-      found[i] = true;
-      player.heading = val.heading;
-    });
-    for (var i = 0; i < renderer.playerSize(); i++)
-    {
-      //Implicitly leaving game.
-      if (!found[i])
-      {
-        var player = renderer.getPlayer();
-        player && player.die();
-      }
-    }
-    
-    renderer.update(frame);
-    
-    var locs = {};
-    for (var i = 0; i < renderer.playerSize(); i++)
-    {
-      var p = renderer.getPlayer(i);
-      locs[p.num] = [p.posX, p.posY, p.waitLag];
-    }
-    socket.emit("verify", {
-      frame: frame,
-      locs: locs
-    }, function(frame, success, msg) {
-      if (!success) console.error(frame + ": " + msg);
-    }.bind(this, frame));
-    
-    dirty = true;
-    requestAnimationFrame(function() {
-      paintLoop();
-    });
-    timeout = setTimeout(function() {
-      console.warn("Server has timed-out. Disconnecting.");
-      socket.disconnect();
-    }, 3000);
+  socket.on('notifyFrame', processFrame);
+  
+  socket.on('dead', function() {
+    socket.disconnect(); //In case we didn't get the disconnect call.
   });
   
   socket.on('disconnect', function(){
@@ -215,13 +156,97 @@ function connectServer() {
     console.info("Server has disconnected. Creating new game.");
     socket.disconnect();
     user.die();
+    dirty = true;
     paintLoop();
     
     $("#begin").css("display: block");
     $("#begin").animate({
       opacity: .9999
-    }, 500);
+    }, 1000, function() {
+      norun = false;
+    });
   });
+}
+
+function processFrame(data)
+{
+  if (timeout != undefined)
+      clearTimeout(timeout);
+    
+  if (requesting !== -1 && requesting < data.frame)
+  {
+    frameCache.push(data);
+    return;
+  }
+  
+  if (data.frame - 1 !== frame)
+  {
+    console.error("Frames don't match up!");
+    socket.emit('requestFrame'); //Restore data.
+    requesting = data.frame;
+    frameCache.push(data);
+    return;
+  }
+  
+  frame++;
+  if (data.newPlayers)
+  {
+    data.newPlayers.forEach(function(p) {
+      if (p.num === user.num)
+        return;
+      var pl = new Player(grid, p);
+      renderer.addPlayer(pl);
+      core.initPlayer(grid, pl);
+    });
+  }
+  
+  var found = new Array(renderer.playerSize());
+  data.moves.forEach(function(val, i) {
+    var player = renderer.getPlayerFromNum(val.num);
+    if (!player) return;
+    if (val.left) player.die();
+    found[i] = true;
+    player.heading = val.heading;
+  });
+  for (var i = 0; i < renderer.playerSize(); i++)
+  {
+    //Implicitly leaving game.
+    if (!found[i])
+    {
+      var player = renderer.getPlayer();
+      player && player.die();
+    }
+  }
+  
+  renderer.update();
+  
+  var locs = {};
+  for (var i = 0; i < renderer.playerSize(); i++)
+  {
+    var p = renderer.getPlayer(i);
+    locs[p.num] = [p.posX, p.posY, p.waitLag];
+  }
+
+  socket.emit("verify", {
+    frame: frame,
+    locs: locs
+  }, function(frame, success, adviceFix, msg) {
+    if (!success && requesting === -1) 
+    {
+      console.error(frame + ": " + msg);
+      if (adviceFix)
+        socket.emit('requestFrame');
+    }
+  }.bind(this, frame));
+  
+  dirty = true;
+  requestAnimationFrame(function() {
+    paintLoop();
+  });
+  timeout = setTimeout(function() {
+    console.warn("Server has timed-out. Disconnecting.");
+    socket.disconnect();
+  }, 3000);
 }
 
 function paintLoop()
@@ -250,6 +275,7 @@ function paintLoop()
     socket.disconnect();
     deadFrames++;
     dirty = true;
+    renderer.update();
     requestAnimationFrame(paintLoop);
   }
 }

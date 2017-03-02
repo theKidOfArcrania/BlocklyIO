@@ -14,7 +14,6 @@ var HUES = [0, 10, 20, 25, 30, 35, 40, 45, 50, 60, 70, 100, 110, 120, 125, 130, 
 var SATS = [192, 150, 100].map(function(val) {return val / 240});
 
 
-
 function Game(id)
 {
   //Shuffle the hues.
@@ -27,11 +26,11 @@ function Game(id)
     HUES[b] = tmp;
   }
   
-  var colors = new Array(SATS.length * HUES.length);
+  var possColors = new Array(SATS.length * HUES.length);
   i = 0;
   for (var s = 0; s < SATS.length; s++)
     for (var h = 0; h < HUES.length; h++)
-      colors[i++] = new Color(HUES[h], SATS[s], .5, 1);
+      possColors[i++] = new Color(HUES[h], SATS[s], .5, 1);
   
   var nextInd = 0;
   var players = [];
@@ -52,9 +51,6 @@ function Game(id)
   
   this.id = id;
   
-  //var frameGate = new Gate(1);
-  //var timeout = undefined;
-  
   this.addPlayer = function(client, name) {
     if (players.length >= MAX_PLAYERS)
       return false;
@@ -68,10 +64,11 @@ function Game(id)
       posY: start.row * CELL_WIDTH,
       currentHeading: Math.floor(Math.random() * 4),
       name: name,
-      num: nextInd
+      num: nextInd, 
+      base: possColors.shift()
     };
     
-    var p = new Player(false, grid, params);
+    var p = new Player(grid, params);
     p.tmpHeading = params.currentHeading;
     p.client = client;
     players.push(p);
@@ -79,34 +76,32 @@ function Game(id)
     nextInd++;
     core.initPlayer(grid, p);
     
-    //playerReady(p, frame);
-    console.log(p.name + " joined.");
+    console.log((p.name || "Unnamed") + " (" + p.num + ") joined.");
     
-    //TODO: kick off any clients that take too long.
-    //TODO: limit number of requests per frame.
     client.on("requestFrame", function () {
-      //if (p.frame === frame)
-      //  return;
+      if (p.frame === frame)
+        return;
+      p.frame = frame; //Limit number of requests per frame. (One per frame);
+      
       var splayers = players.map(function(val) {return val.serialData();});
       client.emit("game", {
         "num": p.num,
         "gameid": id,
         "frame": frame,
         "players": splayers,
-        "grid": gridSerialData(grid, players),
-        "colors": colors
+        "grid": gridSerialData(grid, players)
       });
-      //playerReady(p, frame);
     });
     
+    //Verifies that this client has executed this frame properly.
     client.on("verify", function(data, resp) {
       if (typeof resp !== "function")
         return;
       
       if (!data.frame)
-        resp(false, "No frame supplied");
+        resp(false, false, "No frame supplied");
       else if (!checkInt(data.frame, 0, frame + 1))
-        resp(false, "Must be a valid frame number");
+        resp(false, false, "Must be a valid frame number");
       else
       {
         verifyPlayerLocations(data.frame, data.locs, resp);
@@ -145,8 +140,9 @@ function Game(id)
     });
     
     client.on('disconnect', function() {
+      p.die(); //Die immediately if not already.
       p.disconnected = true;
-      console.log(p.name + " left.");
+      console.log((p.name || "Unnamed") + " (" + p.num + ") left.");
     });
     return true;
   };
@@ -158,7 +154,7 @@ function Game(id)
       locs[p.num] = [p.posX, p.posY, p.waitLag];
     locs.frame = frame;
     
-    if (frameLocs.length >= 100)
+    if (frameLocs.length >= 300) //Give it 5 seconds of lag.
       frameLocs.shift();
     frameLocs.push(locs);
   }
@@ -168,7 +164,7 @@ function Game(id)
     var minFrame = frame - frameLocs.length + 1;
     if (fr < minFrame || fr > frame)
     {
-      resp(false, "Frames out of reference");
+      resp(false, false, "Frames out of reference");
       return;
     }
     
@@ -180,19 +176,19 @@ function Game(id)
     var locs = frameLocs[fr - minFrame];
     if (locs.frame !== fr)
     {
-      resp(false, locs.frame + " != " + fr);
+      resp(false, false, locs.frame + " != " + fr);
       return;
     }
     for (var num in verify)
     {
       if (locs[num][0] !== verify[num][0] || locs[num][1] !== verify[num][1] || locs[num][2] !== verify[num][2])
       {
-        resp(false, 'P' + num +  ' ' + string(locs[num]) + ' !== ' + string(verify[num]));
+        resp(false, true, 'P' + num +  ' ' + string(locs[num]) + ' !== ' + string(verify[num]));
         return;
       }
     }
     
-    resp(true);
+    resp(true, false);
   }
   
   function tick() {
@@ -207,7 +203,6 @@ function Game(id)
         "frame": frame,
         "players": splayers,
         "grid": gridSerialData(grid, players),
-        "colors": colors
       });
       return val.serialData();
     });
@@ -241,8 +236,13 @@ function Game(id)
     core.updateFrame(grid, players, dead);
     for (var pl of dead)
     {
-      //TODO: send a "good-bye" frame to the dead players. Just in case.
-      console.log(pl.name + " died.");
+      if (!pl.handledDead)
+      {
+        possColors.unshift(pl.baseColor);
+        pl.handledDead = true;
+      }
+      console.log((pl.name || "Unnamed") + " (" + pl.num + ") died.");
+      pl.client.emit("dead");
       pl.client.disconnect(true); 
     }
   }
