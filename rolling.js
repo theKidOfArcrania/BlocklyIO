@@ -1,10 +1,10 @@
 
-function Rolling(value, maxSpeed)
+function Rolling(value, frames)
 {
   var lag = 0;
   
-  if (!maxSpeed)
-    maxSpeed = 5;
+  if (!frames)
+    frames = 24;
   
   this.value = value;
   
@@ -13,9 +13,10 @@ function Rolling(value, maxSpeed)
     enumerable: true
   });
   this.update = function() {
-    var delta = value - lag;
+    var delta = this.value - lag;
     var dir = Math.sign(delta);
-    var mag = Math.min(Math.abs(maxSpeed), Math.abs(delta));
+    var speed = Math.abs(delta) / frames;
+    var mag = Math.min(Math.abs(speed), Math.abs(delta));
     
     lag += mag * dir;
     return lag;

@@ -38,8 +38,8 @@ $(function () {
 
 
 var allowAnimation = true;
-var animateGrid, players, allPlayers, playerPortion, portionsRolling, grid, 
-  animateTo, offset, user, lagPortion, portionSpeed, zoom, kills, showedDead;
+var animateGrid, players, allPlayers, playerPortion, portionsRolling, 
+  barProportionRolling, grid, animateTo, offset, user, zoom, kills, showedDead;
 
 grid = new Grid(GRID_SIZE, function(row, col, before, after) {
   //Keep track of areas.
@@ -66,13 +66,12 @@ function init() {
   allPlayers = [];
   playerPortion = [];
   portionsRolling = [];
+  barProportionRolling = [];
   
   animateTo = [0, 0];
   offset = [0, 0];
   
   user = null;
-  lagPortion = 0;
-  portionSpeed = 0;
   zoom = 1;
   kills = 0;
   showedDead = false;
@@ -209,7 +208,8 @@ function paintUIBar(ctx)
   ctx.fillStyle = "rgba(180, 180, 180, .3)";
   ctx.fillRect(barOffset, 0, BAR_WIDTH, BAR_HEIGHT);
   
-  var barSize = Math.ceil((BAR_WIDTH - MIN_BAR_WIDTH) * lagPortion + MIN_BAR_WIDTH);
+  var userPortions = portionsRolling[user.num] ? portionsRolling[user.num].lag : 0;
+  var barSize = Math.ceil((BAR_WIDTH - MIN_BAR_WIDTH) * userPortions + MIN_BAR_WIDTH);
   ctx.fillStyle = user ? user.baseColor.rgbString() : "";
   ctx.fillRect(barOffset, 0, barSize, CELL_WIDTH);
   ctx.fillStyle = user ? user.shadowColor.rgbString() : "";
@@ -219,7 +219,7 @@ function paintUIBar(ctx)
   //Percentage
   ctx.fillStyle = "white";
   ctx.font = "18px Changa";
-  ctx.fillText((lagPortion * 100).toFixed(3) + "%", 5 + barOffset, CELL_WIDTH - 5);
+  ctx.fillText((userPortions * 100).toFixed(3) + "%", 5 + barOffset, CELL_WIDTH - 5);
   
   //Number of kills
   var killsText = "Kills: " + kills;
@@ -240,14 +240,25 @@ function paintUIBar(ctx)
   ctx.fillText("Rank: " + (rank === -1 ? "--" : rank + 1) + " of " + sorted.length, 
   ctx.measureText(killsText).width + killsOffset + 20, CELL_WIDTH - 5);
   
+  //Rolling the leaderboard bars.
+  if (sorted.length > 0)
+  {
+    var maxPortion = sorted[0].portion;
+    for (var i = 0; i < players.length; i++)
+    {
+      var rolling = barProportionRolling[players[i].num];
+      rolling.value = playerPortion[players[i].num] / maxPortion;
+      rolling.update();
+    }
+  }
+  
   //Show leaderboard.
-  var maxPortion = sorted[0] ? sorted[0].portion : 0;
   var leaderboardNum = Math.min(5, sorted.length);
   for (var i = 0; i < leaderboardNum; i++)
   {
     var player = sorted[i].player;
     var name = player.name || "Unnamed";
-    var portion = sorted[i].portion / maxPortion;
+    var portion = barProportionRolling[player.num].lag;
     
     var nameWidth = ctx.measureText(name).width;
     barSize = Math.ceil((BAR_WIDTH - MIN_BAR_WIDTH) * portion + MIN_BAR_WIDTH);
@@ -263,10 +274,9 @@ function paintUIBar(ctx)
     ctx.fillRect(barX, barY + CELL_WIDTH, barSize, SHADOW_OFFSET);
     
     ctx.fillStyle = "black";
-    ctx.fillText(name, barX - nameWidth - 10, barY + 27);
+    ctx.fillText(name, barX - nameWidth - 15, barY + 27);
     
-    var percentage = (sorted[i].portion / GRID_SIZE / GRID_SIZE * 100).toFixed(3) + "%";
-    var metrics = ctx.measureText(percentage);
+    var percentage = (portionsRolling[player.num].lag * 100).toFixed(3) + "%";
     ctx.fillStyle = "white";
     ctx.fillText(percentage, barX + 5, barY + CELL_WIDTH - 5);
   }
@@ -335,29 +345,17 @@ function update() {
     }
   }
   
-  //Change area percentage
-  var userPortion;
-  if (user) userPortion = playerPortion[user.num] / (GRID_SIZE * GRID_SIZE);
-  else userPortion = 0;
-  
-  if (lagPortion !== userPortion)
+  //Calculate player portions.
+  for (var i = 0; i < players.length; i++)
   {
-    if (allowAnimation)
-    {
-      delta = userPortion - lagPortion;
-      dir = Math.sign(delta);
-      mag = Math.min(Math.abs(portionSpeed), Math.abs(delta));
-      lagPortion += dir * mag;
-    }
-    else
-      lagPortion = userPortion;
+    var roll = portionsRolling[players[i].num];
+    roll.value = playerPortion[players[i].num] / GRID_SIZE / GRID_SIZE;
+    roll.update();
   }
   
   //Zoom goes from 1 to .5, decreasing as portion goes up. TODO: maybe can modify this?
-  zoom = 1 / (lagPortion + 1); 
-  
-  //Update user's portions and top ranks.
-  portionSpeed = Math.abs(userPortion - lagPortion) / ANIMATE_FRAMES;
+  if (portionsRolling[user.num])
+    zoom = 1 / (portionsRolling[user.num].lag + 1); 
   
   var dead = [];
   core.updateFrame(grid, players, dead, function addKill(killer, other)
@@ -419,7 +417,8 @@ module.exports = exports = {
       return; //Already added.
     allPlayers[player.num] = players[players.length] = player;
     playerPortion[player.num] = 0;
-    portionsRolling = new Rolling(0, .2);
+    portionsRolling[player.num] = new Rolling(9 / GRID_SIZE / GRID_SIZE, ANIMATE_FRAMES);
+    barProportionRolling[player.num] = new Rolling(0, ANIMATE_FRAMES);
     return players.length - 1;
   },
   getPlayer: function(ind) {
