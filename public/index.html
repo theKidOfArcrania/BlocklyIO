@@ -7,15 +7,17 @@
 </head>
 <body>
     <canvas id="main-ui"></canvas>
-    <form autocomplete="off" onsubmit="requestAnimationFrame(run); return false;">
-        <div id="begin" style="opacity: .99999" class="fullscreen">
-            <div class="center">
-                <h1>Paper.IO!</h1>
-                <small>Todo: replace ^^^ with a picture. Work in progress.</small>
-                <h1>Enter your name</h1>
-                <input autocomplete="off" id="name" placeholder="An awesome name!">
-                <button type="submit">Play!</button>
+    <div id="begin" style="opacity: .99999" class="fullscreen">
+        <div class="center">
+            <h1>Paper.IO!</h1>
+            <small>Todo: replace ^^^ with a picture. Work in progress.</small>
+            <h1>Enter your name</h1>
+            <input autocomplete="off" id="name" placeholder="An awesome name!">
+            <button type="submit">Play!</button>
+            <div>
+                <small id="error">Your browser does not support JavaScript!</small>
             </div>
         </div>
-    </form>
+    </div>
+    
 </body>

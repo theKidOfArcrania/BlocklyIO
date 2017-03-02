@@ -315,6 +315,74 @@ if ( !window.requestAnimationFrame ) {
   })();
 }
 
+var norun = false;
+function run() {
+  if (norun)
+    return; //Prevent multiple clicks.
+  norun = true;
+  $("#begin").css("display: none");
+  $("#begin").animate({
+      opacity: 0
+  }, 1000);
+  
+  user = null;
+  deadFrames = 0;
+  
+  //Socket connection.
+  //, {transports: ['websocket'], upgrade: false}
+  connectServer();
+  socket.emit('hello', {
+    name: $("#name").val(),
+    type: 0, //Free-for-all
+    gameid: -1 //Requested game-id, or -1 for anyone.
+  }, function(success) {
+    if (success) console.info("Connected to game!");
+    else console.error("Unable to connect to game.");
+  });
+}
+
+$(function() {
+  var error = $("#error");
+  
+  if (!window.WebSocket)
+  {
+    error.text("Your browser does not support WebSockets!");
+    return;
+  }
+  
+  error.text("Loading..."); //TODO: show loading screen.
+  var success = false;
+  var socket = io('http://paper-io-thekidofarcrania.c9users.io:8081', {
+    'forceNew': true,
+    upgrade: false,
+    transports: ['websocket']
+  });
+  
+  socket.on('connect_error', function() {
+    if (!success)
+      error.text("Cannot connect with server. This probably is due to misconfigured proxy server. (Try using a different browser)");
+  })
+  socket.emit("checkConn", function() {
+    success = true;
+    socket.disconnect();
+  });
+  setTimeout(function() {
+    if (!success)
+      error.text("Cannot connect with server. This probably is due to misconfigured proxy server. (Try using a different browser)");
+    else
+    {
+      error.text("");
+      $("input").keypress(function(evt) {
+        if (evt.which === 13)
+          requestAnimationFrame(run);
+      });
+      $("button").click(function(evt) {
+        requestAnimationFrame(run);
+      });
+    }
+  }, 2000);
+});
+
 var user, socket, frame;
 
 //Event listeners
@@ -347,32 +415,7 @@ $(document).keydown(function(e) {
   e.preventDefault();
 });
 
-var norun = false;
-window.run = run;
-function run() {
-  if (norun)
-    return; //Prevent multiple clicks.
-  norun = true;
-  $("#begin").css("display: none");
-  $("#begin").animate({
-      opacity: 0
-  }, 1000);
-  
-  user = null;
-  deadFrames = 0;
-  
-  //Socket connection.
-  //, {transports: ['websocket'], upgrade: false}
-  connectServer();
-  socket.emit('hello', {
-    name: $("#name").val(),
-    type: 0, //Free-for-all
-    gameid: -1 //Requested game-id, or -1 for anyone.
-  }, function(success) {
-    if (success) console.info("Connected to game!");
-    else console.error("Unable to connect to game.");
-  });
-}
+
 
 var grid = renderer.grid; 
 var timeout = undefined;
@@ -385,7 +428,11 @@ var frameCache = []; //Frames after our request.
 function connectServer() {
   io.j = [];
   io.sockets = [];
-  socket = io('http://paper-io-thekidofarcrania.c9users.io:8081', {'forceNew': true});
+  socket = io('http://paper-io-thekidofarcrania.c9users.io:8081', {
+    'forceNew': true,
+    upgrade: false,
+    transports: ['websocket']
+  });
   socket.on('connect', function(){
     console.info("Connected to server.");
   });
@@ -565,7 +612,6 @@ function paintLoop()
     requestAnimationFrame(paintLoop);
   }
 }
-
 },{"./game-consts.js":5,"./game-core.js":6,"./game-renderer.js":7,"./player.js":56,"socket.io-client":9}],5:[function(require,module,exports){
 function constant(val)
 {

@@ -9,7 +9,9 @@ body, html {
   color: white;
   font-family: "Changa", "Sans Serif";
 }
-
+#error {
+  color: red;
+}
 canvas {
   position: absolute;
   top: 0;

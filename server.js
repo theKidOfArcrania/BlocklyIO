@@ -20,7 +20,7 @@ server.listen(8080);
 
 server = http.createServer();
 var io = require('socket.io')(server);
-//io.set('transports', ['websocket']);
+io.set('transports', ['websocket']);
 
 var Game = require('./game-server.js');
 var games = [new Game()];
@@ -30,6 +30,7 @@ io.on('connection', function(socket){
     fn(true);
     games[0].addPlayer(socket, data.name);
   });
+  socket.on("checkConn", function(fn) { fn(); });
 });
 server.listen(8081);
 
