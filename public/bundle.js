@@ -136,10 +136,6 @@ function run() {
   if (norun)
     return; //Prevent multiple clicks.
   norun = true;
-  $("#begin").css("display: none");
-  $("#begin").animate({
-      opacity: 0
-  }, 1000);
   
   user = null;
   deadFrames = 0;
@@ -151,9 +147,22 @@ function run() {
     name: $("#name").val(),
     type: 0, //Free-for-all
     gameid: -1 //Requested game-id, or -1 for anyone.
-  }, function(success) {
-    if (success) console.info("Connected to game!");
-    else console.error("Unable to connect to game.");
+  }, function(success, msg) {
+    if (success) 
+    {
+      console.info("Connected to game!");
+      $("#begin").css("display: none");
+      $("#begin").animate({
+          opacity: 0
+      }, 1000);
+    }
+    else 
+    {
+      console.error("Unable to connect to game: " + msg);
+      var error = $("#error");
+      error.text(msg);
+      norun = false;
+    }
   });
 }
 
@@ -964,7 +973,7 @@ function centerOnPlayer(player, pos)
   var xOff = Math.floor(player.posX - (gameWidth / zoom - CELL_WIDTH) / 2);
   var yOff = Math.floor(player.posY - (gameHeight / zoom - CELL_WIDTH) / 2);
   var gridWidth = grid.size * CELL_WIDTH + BORDER_WIDTH * 2;
-  pos[0] = Math.max(Math.min(xOff, gridWidth + BAR_WIDTH + 100 - gameWidth / zoom), 0);
+  pos[0] = Math.max(Math.min(xOff, gridWidth + (BAR_WIDTH + 100) / zoom - gameWidth / zoom), 0);
   pos[1] = Math.max(Math.min(yOff, gridWidth - gameHeight / zoom), 0);
 }
 

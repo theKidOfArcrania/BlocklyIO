@@ -46,6 +46,8 @@ function Game(id)
         filled++;
       else
         filled--;
+      if (filled === GRID_SIZE * GRID_SIZE)
+        console.log("FULL GAME");
     }
   });
   

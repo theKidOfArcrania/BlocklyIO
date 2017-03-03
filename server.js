@@ -30,8 +30,12 @@ var games = [new Game()];
 io.on('connection', function(socket){
   socket.on("hello", function(data, fn) {
     //TODO: error checking.
-    fn(true);
-    games[0].addPlayer(socket, data.name);
+    if (data.name && data.name.length > 32)
+      fn(false, "Your name is too long!");
+    else if (!games[0].addPlayer(socket, data.name))
+      fn(false, "Game is too full!");
+    else
+      fn(true);
   });
   socket.on("checkConn", function(fn) { fn(); });
 });

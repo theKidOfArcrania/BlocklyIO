@@ -379,7 +379,7 @@ function centerOnPlayer(player, pos)
   var xOff = Math.floor(player.posX - (gameWidth / zoom - CELL_WIDTH) / 2);
   var yOff = Math.floor(player.posY - (gameHeight / zoom - CELL_WIDTH) / 2);
   var gridWidth = grid.size * CELL_WIDTH + BORDER_WIDTH * 2;
-  pos[0] = Math.max(Math.min(xOff, gridWidth + BAR_WIDTH + 100 - gameWidth / zoom), 0);
+  pos[0] = Math.max(Math.min(xOff, gridWidth + (BAR_WIDTH + 100) / zoom - gameWidth / zoom), 0);
   pos[1] = Math.max(Math.min(yOff, gridWidth - gameHeight / zoom), 0);
 }
 
