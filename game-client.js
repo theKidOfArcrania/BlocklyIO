@@ -66,7 +66,7 @@ $(function() {
   
   error.text("Loading..."); //TODO: show loading screen.
   var success = false;
-  var socket = io('http://paper-io-thekidofarcrania.c9users.io:8081', {
+  var socket = io('http://' + window.location.hostname + ':8081', {
     'forceNew': true,
     upgrade: false,
     transports: ['websocket']
@@ -142,7 +142,7 @@ var frameCache = []; //Frames after our request.
 function connectServer() {
   io.j = [];
   io.sockets = [];
-  socket = io('http://paper-io-thekidofarcrania.c9users.io:8081', {
+  socket = io('http://' + window.location.hostname + ':8081', {
     'forceNew': true,
     upgrade: false,
     transports: ['websocket']
