@@ -12,6 +12,7 @@ body, html {
 #error {
   color: red;
 }
+
 canvas {
   position: absolute;
   top: 0;
@@ -59,4 +60,12 @@ button:active {
 
 .hidden {
   display: none;
+}
+
+#stats
+{
+  background: rgb(80, 80, 80);
+  position: absolute;
+  top: 0;
+  left: 0;
 }

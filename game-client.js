@@ -49,7 +49,7 @@ function run() {
     if (success) 
     {
       console.info("Connected to game!");
-      $("#begin").css("display: none");
+      $("#begin").addClass("hidden");
       $("#begin").animate({
           opacity: 0
       }, 1000);
@@ -215,12 +215,27 @@ function connectServer() {
     dirty = true;
     paintLoop();
     
-    $("#begin").css("display: block");
-    $("#begin").animate({
+    //TODO: Show score stats.
+    //Show score stats.
+    $("#stats").removeClass("hidden");
+    $("#stats").animate({
       opacity: .9999
-    }, 1000, function() {
-      norun = false;
+    }, 3000, function() {
+      showStats();
     });
+    
+    //Then fade back into the login screen.
+    
+  });
+}
+
+function showStats() {
+  $("#begin").removeClass("hidden");
+  $("#begin").animate({
+    opacity: .9999
+  }, 1000, function() {
+    $("#stats").addClass("hidden").css("opacity", 0);
+    norun = false;
   });
 }
 

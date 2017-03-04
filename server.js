@@ -1,3 +1,4 @@
+//TODO: rename as "blockly.io".
 var hostname = process.argv[2] || "0.0.0.0";
 var port = parseInt(process.argv[3]) || 80;
 
@@ -9,7 +10,6 @@ var serveStatic = require('serve-static');
 var serve = serveStatic('public/', {'setHeaders': setHeaders});
 
 function setHeaders(res, path) {
-  res.setHeader("Access-Control-Allow-Origin", "http://paper-io-thekidofarcrania.c9users.io:8081");
   res.setHeader('Cache-Control', 'public, max-age=0');
 }
 

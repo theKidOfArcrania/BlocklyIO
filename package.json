@@ -1,16 +1,17 @@
 {
-  "name": "paper-io",
+  "name": "blockly-io",
   "version": "0.9.0",
-  "description": "An multiplayer-IO type game (cloned)",
+  "description": "An multiplayer-IO type game (cloned from Paper-IO)",
   "main": "",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/theKidOfArcrania/PaperIO-Web.git"
+    "url": "git+https://github.com/theKidOfArcrania/Blockly-IO.git"
   },
   "keywords": [
+    "Blockly-IO",
     "Paper-IO",
     "IO",
     "Game"
@@ -18,9 +19,9 @@
   "author": "theKidOfArcrania",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/theKidOfArcrania/PaperIO-Web/issues"
+    "url": "https://github.com/theKidOfArcrania/Blockly-IO/issues"
   },
-  "homepage": "https://github.com/theKidOfArcrania/PaperIO-Web#readme",
+  "homepage": "https://github.com/theKidOfArcrania/Blockly-IO#readme",
   "dependencies": {
     "finalhandler": "^1.0.0",
     "serve-static": "^1.11.2",
