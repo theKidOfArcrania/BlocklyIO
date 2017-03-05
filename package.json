@@ -23,6 +23,8 @@
   },
   "homepage": "https://github.com/theKidOfArcrania/Blockly-IO#readme",
   "dependencies": {
+    "compression": "^1.6.2",
+    "express": "^4.15.0",
     "finalhandler": "^1.0.0",
     "serve-static": "^1.11.2",
     "socket.io": "^1.7.3",

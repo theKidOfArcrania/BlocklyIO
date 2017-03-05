@@ -2,26 +2,17 @@
 var hostname = process.argv[2] || "0.0.0.0";
 var port = parseInt(process.argv[3]) || 80;
 
-var finalhandler = require('finalhandler');
+var express = require('express');
+var compression = require('compression')
+var app = express();
+
+//Create static server
+app.use(compression());
+app.use(express.static('public'));
+app.listen(port, hostname);
+
 var http = require('http');
-var serveStatic = require('serve-static');
-
-// Serve up public/ftp folder
-var serve = serveStatic('public/', {'setHeaders': setHeaders});
-
-function setHeaders(res, path) {
-  res.setHeader('Cache-Control', 'public, max-age=0');
-}
-
-// Create server
-var server = http.createServer(function onRequest (req, res) {
-  serve(req, res, finalhandler(req, res));
-});
-
-// Listen
-server.listen(port, hostname);
-
-server = http.createServer();
+var server = http.createServer();
 var io = require('socket.io')(server);
 io.set('transports', ['websocket']);
 

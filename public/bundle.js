@@ -395,6 +395,47 @@ $(function() {
 var user, socket, frame;
 
 //Event listeners
+//Used from http://stackoverflow.com/a/23230280/7344257
+document.addEventListener('touchstart', handleTouchStart, false);        
+document.addEventListener('touchmove', handleTouchMove, false);
+
+var xDown = null;                                                        
+var yDown = null;                                                        
+
+function handleTouchStart(evt) {                                         
+  xDown = evt.touches[0].clientX;                                      
+  yDown = evt.touches[0].clientY;                                      
+}                                      
+
+function handleTouchMove(evt) {
+  if ( xDown === null || yDown === null )
+    return;
+
+  var xUp = evt.touches[0].clientX;                                    
+  var yUp = evt.touches[0].clientY;
+
+  var xDiff = xDown - xUp;
+  var yDiff = yDown - yUp;
+
+  //Set new heading.
+  var newHeading;
+  if ( Math.abs( xDiff ) > Math.abs( yDiff ) ) /*most significant*/
+  {
+    if ( xDiff > 0 ) newHeading = 3; /* left swipe */ 
+    else newHeading = 1; /* right swipe */
+  } 
+  else 
+  {
+    if ( yDiff > 0 ) newHeading = 0; /* up swipe */ 
+    else newHeading = 2; /* down swipe */
+  }
+  setHeading(newHeading);
+  
+  /* reset values */
+  xDown = null;
+  yDown = null;                                             
+};
+
 $(document).keydown(function(e) {
   if (!user || user.dead)
     return;
@@ -407,7 +448,12 @@ $(document).keydown(function(e) {
     case 40: newHeading = 2; break; //DOWN
     default: return; //exit handler for other keys.
   }
-  
+  setHeading(newHeading);
+  e.preventDefault();
+});
+
+function setHeading(newHeading)
+{
   if (newHeading === user.currentHeading || ((newHeading % 2 === 0) ^ 
     (user.currentHeading % 2 === 0)))
   {
@@ -421,10 +467,7 @@ $(document).keydown(function(e) {
           console.error(msg);
       });
   }
-  e.preventDefault();
-});
-
-
+}
 
 var grid = renderer.grid; 
 var timeout = undefined;
@@ -501,14 +544,15 @@ function connectServer() {
     dirty = true;
     paintLoop();
     
+    showStats();
     //TODO: Show score stats.
     //Show score stats.
-    $("#stats").removeClass("hidden");
-    $("#stats").animate({
-      opacity: .9999
-    }, 3000, function() {
-      showStats();
-    });
+    // $("#stats").removeClass("hidden");
+    // $("#stats").animate({
+    //   opacity: .9999
+    // }, 3000, function() {
+      
+    // });
     
     //Then fade back into the login screen.
     
@@ -516,6 +560,8 @@ function connectServer() {
 }
 
 function showStats() {
+  var stats = 
+  
   $("#begin").removeClass("hidden");
   $("#begin").animate({
     opacity: .9999
@@ -812,7 +858,7 @@ var BAR_HEIGHT = SHADOW_OFFSET + CELL_WIDTH;
 var BAR_WIDTH = 400;
 
 
-var canvasWidth, canvasHeight, gameWidth, gameHeight, ctx, offctx, offscreenCanvas;
+var canvasWidth, canvasHeight, gameWidth, gameHeight, ctx, offctx, offscreenCanvas, initZoom;
 
 $(function () {
   var canvas = $("#main-ui")[0];
@@ -823,6 +869,7 @@ $(function () {
 
   canvasWidth = offscreenCanvas.width = canvas.width = window.innerWidth;
   canvasHeight = offscreenCanvas.height = canvas.height = window.innerHeight - 20;
+  zoom = initZoom = (canvasWidth / 1280);
   canvas.style.marginTop = 20 / 2;
   
   gameWidth = canvasWidth;
@@ -940,10 +987,10 @@ function paintGrid(ctx)
       {
         
         ctx.fillStyle = shadowColor.rgbString();
-        ctx.fillRect(x, y + CELL_WIDTH, CELL_WIDTH + 1, SHADOW_OFFSET);
+        ctx.fillRect(x, y + CELL_WIDTH, CELL_WIDTH + 1 / zoom, SHADOW_OFFSET);
       }
       ctx.fillStyle = baseColor.rgbString();
-      ctx.fillRect(x, y, CELL_WIDTH + 1, CELL_WIDTH + 1);
+      ctx.fillRect(x, y, CELL_WIDTH + 1 / zoom, CELL_WIDTH + 1 / zoom);
     }
   }
   
@@ -973,7 +1020,7 @@ function paintGrid(ctx)
           ctx.fillStyle = shadowColor.rgbString();
           ctx.fillRect(x, y + CELL_WIDTH, CELL_WIDTH, SHADOW_OFFSET);
           ctx.fillStyle = baseColor.rgbString();
-          ctx.fillRect(x, y, CELL_WIDTH + 1, CELL_WIDTH + 1);
+          ctx.fillRect(x, y, CELL_WIDTH + 1 / zoom, CELL_WIDTH + 1 / zoom);
         }
         
         animateSpec.frame++;
@@ -984,40 +1031,46 @@ function paintGrid(ctx)
   }
 }
 
-
+//TODO: mobile-friendly UI bar and mobile-friendly ranks 
 function paintUIBar(ctx)
 {
+  var Z_CELL_WIDTH = CELL_WIDTH * initZoom;
+  var Z_BAR_HEIGHT = BAR_HEIGHT * initZoom;
+  var L_PADDING = 20 * initZoom;
+  var PADDING = 10 * initZoom;
+  var S_PADDING = 5 * initZoom;
+  
   //UI Bar background
   ctx.fillStyle = "#24422c";
-  ctx.fillRect(0, 0, canvasWidth, BAR_HEIGHT);
+  ctx.fillRect(0, 0, canvasWidth, Z_BAR_HEIGHT);
   
   var barOffset;
   ctx.fillStyle = "white";
   ctx.font = "24px Changa";
-  barOffset = (user && user.name) ? (ctx.measureText(user.name).width + 20) : 0;
-  ctx.fillText(user ? user.name : "", 5, CELL_WIDTH - 5);
+  barOffset = (user && user.name) ? (ctx.measureText(user.name).width + L_PADDING) : 0;
+  ctx.fillText(user ? user.name : "", S_PADDING, Z_CELL_WIDTH - S_PADDING);
   
   //Draw filled bar.
   ctx.fillStyle = "rgba(180, 180, 180, .3)";
-  ctx.fillRect(barOffset, 0, BAR_WIDTH, BAR_HEIGHT);
+  ctx.fillRect(barOffset, 0, BAR_WIDTH * initZoom, Z_BAR_HEIGHT);
   
   var userPortions = portionsRolling[user.num] ? portionsRolling[user.num].lag : 0;
-  var barSize = Math.ceil((BAR_WIDTH - MIN_BAR_WIDTH) * userPortions + MIN_BAR_WIDTH);
+  var barSize = Math.ceil(((BAR_WIDTH - MIN_BAR_WIDTH) * userPortions + MIN_BAR_WIDTH) * initZoom);
   ctx.fillStyle = user ? user.baseColor.rgbString() : "";
-  ctx.fillRect(barOffset, 0, barSize, CELL_WIDTH);
+  ctx.fillRect(barOffset, 0, barSize, Z_CELL_WIDTH);
   ctx.fillStyle = user ? user.shadowColor.rgbString() : "";
-  ctx.fillRect(barOffset, CELL_WIDTH, barSize, SHADOW_OFFSET);
+  ctx.fillRect(barOffset, Z_CELL_WIDTH, barSize, SHADOW_OFFSET * initZoom);
   
   //TODO: dont reset kill count and zoom when we request frames.
   //Percentage
   ctx.fillStyle = "white";
   ctx.font = "18px Changa";
-  ctx.fillText((userPortions * 100).toFixed(3) + "%", 5 + barOffset, CELL_WIDTH - 5);
+  ctx.fillText((userPortions * 100).toFixed(3) + "%", S_PADDING + barOffset, Z_CELL_WIDTH - S_PADDING);
   
   //Number of kills
   var killsText = "Kills: " + kills;
-  var killsOffset = 20 + BAR_WIDTH + barOffset;
-  ctx.fillText(killsText, killsOffset, CELL_WIDTH - 5);
+  var killsOffset = L_PADDING + BAR_WIDTH + barOffset;
+  ctx.fillText(killsText, killsOffset, Z_CELL_WIDTH - S_PADDING);
   
   //Calcuate rank
   var sorted = [];
@@ -1031,7 +1084,7 @@ function paintUIBar(ctx)
  
   var rank = sorted.findIndex(function(val) {return val.player === user});
   ctx.fillText("Rank: " + (rank === -1 ? "--" : rank + 1) + " of " + sorted.length, 
-  ctx.measureText(killsText).width + killsOffset + 20, CELL_WIDTH - 5);
+  ctx.measureText(killsText).width + killsOffset + L_PADDING, Z_CELL_WIDTH - S_PADDING);
   
   //Rolling the leaderboard bars.
   if (sorted.length > 0)
@@ -1054,24 +1107,24 @@ function paintUIBar(ctx)
     var portion = barProportionRolling[player.num].lag;
     
     var nameWidth = ctx.measureText(name).width;
-    barSize = Math.ceil((BAR_WIDTH - MIN_BAR_WIDTH) * portion + MIN_BAR_WIDTH);
+    barSize = Math.ceil(((BAR_WIDTH - MIN_BAR_WIDTH) * portion + MIN_BAR_WIDTH) * initZoom);
     var barX = canvasWidth - barSize;
-    var barY = BAR_HEIGHT * (i + 1);
-    var offset = i == 0 ? 10 : 0;
+    var barY = Z_BAR_HEIGHT * (i + 1) * initZoom;
+    var offset = i == 0 ? PADDING : 0;
     
     ctx.fillStyle = 'rgba(10, 10, 10, .3)';
-    ctx.fillRect(barX - 10, barY + 10 - offset, barSize + 10, BAR_HEIGHT + offset);
+    ctx.fillRect(barX - PADDING, barY + PADDING - offset, barSize + PADDING, Z_BAR_HEIGHT + offset);
     ctx.fillStyle = player.baseColor.rgbString();
-    ctx.fillRect(barX, barY, barSize, CELL_WIDTH);
+    ctx.fillRect(barX, barY, barSize, CELL_WIDTH * initZoom);
     ctx.fillStyle = player.shadowColor.rgbString();
-    ctx.fillRect(barX, barY + CELL_WIDTH, barSize, SHADOW_OFFSET);
+    ctx.fillRect(barX, barY + CELL_WIDTH * initZoom, barSize, SHADOW_OFFSET * initZoom);
     
     ctx.fillStyle = "black";
-    ctx.fillText(name, barX - nameWidth - 15, barY + 27);
+    ctx.fillText(name, barX - nameWidth - 15 * initZoom, barY + 27 * initZoom);
     
     var percentage = (portionsRolling[player.num].lag * 100).toFixed(3) + "%";
     ctx.fillStyle = "white";
-    ctx.fillText(percentage, barX + 5, barY + CELL_WIDTH - 5);
+    ctx.fillText(percentage, barX + 5 * initZoom, barY + (CELL_WIDTH - 5) * initZoom);
   }
   
 }
@@ -1148,7 +1201,7 @@ function update() {
   
   //Zoom goes from 1 to .5, decreasing as portion goes up. TODO: maybe can modify this?
   if (portionsRolling[user.num])
-    zoom = 1 / (portionsRolling[user.num].lag + 1); 
+    zoom = initZoom / (portionsRolling[user.num].lag + 1); 
   
   var dead = [];
   core.updateFrame(grid, players, dead, function addKill(killer, other)

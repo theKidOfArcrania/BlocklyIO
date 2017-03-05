@@ -1,0 +1,2 @@
+#!/bin/sh
+browserify game-client.js | uglifyjs -c > public/bundle.min.js

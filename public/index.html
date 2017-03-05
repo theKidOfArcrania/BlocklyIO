@@ -1,25 +1,40 @@
 <head>
+    <meta name=viewport content="width=device-width, initial-scale=1">
     <link href="changa.css" rel="stylesheet">
     <link href="styles.css" rel="stylesheet">
     <script src="jquery.min.js"></script>
-    <script src="bundle.js"></script>
+    <script src="bundle.min.js"></script>
     <title>Blockly.IO</title>
 </head>
 <body>
     <canvas id="main-ui"></canvas>
-    <div id="stats" style="opacity: 0" class="fullscreen hidden"></div>
+    <div id="stats" style="opacity: 0" class="fullscreen hidden">
+        <div style="padding-top: 100px"></div>
+        <div class="card">
+            <h1 id="score">Score: <span id="score-num">0</span></h1>
+            <h1 id="high-score">High Score: <span id="high-score-num">0</span></h1>
+            <h1 id="time">Time Alive: <span id="time-num">0</span></h1>
+            <h1 id="killed">Killed: <span id="killed-num">0</span></h1>
+        </div>
+    </div>
     <div id="begin" style="opacity: .99999" class="fullscreen">
         <div class="center">
             <h1>Blockly.IO!</h1>
             <small>Todo: replace ^^^ with a picture. Work in progress.</small><br>
             
             <h1>Enter your name</h1>
-            <input autocomplete="off" id="name" placeholder="An awesome name!">
-            <button type="submit">Play!</button>
             <div>
+                <input autocomplete="off" id="name" placeholder="An awesome name!">
+            </div>
+            <div class="blockless">
+                <button type="submit">Play!</button>
+            </div>
+            <div class="blockless">
                 <small id="error">Your browser does not support JavaScript!</small>
             </div>
+            <br>
+            <small>Visit the open-source code on <a href="https://github.com/theKidOfArcrania/PaperIO-Web">GitHub</a>!</small>
         </div>
     </div>
-    <small>Visit the open-source code on <a href="https://github.com/theKidOfArcrania/PaperIO-Web">GitHub</a>!</small>
+    
 </body>
