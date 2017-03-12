@@ -373,8 +373,9 @@ function Player(grid, sdata) {
     var hue = Math.random();
     this.baseColor = base = new Color(hue, .8, .5);
   }
+  this.lightBaseColor = base.deriveLumination(.1);
   this.shadowColor = base.deriveLumination(-.3);
-  this.tailColor = base.deriveLumination(.2).deriveAlpha(.5);
+  this.tailColor = base.deriveLumination(.3).deriveAlpha(.5);
   
   //Tail requires special handling.
   this.grid = grid; //Temporary

@@ -94,7 +94,7 @@ function paintGridBorder(ctx)
 function paintGrid(ctx)
 {
   //Paint background.
-  ctx.fillStyle = "#e2ebf3";
+  ctx.fillStyle = "rgb(211, 225, 237)";
   ctx.fillRect(0, 0, CELL_WIDTH * GRID_SIZE, CELL_WIDTH * GRID_SIZE);
   
   paintGridBorder(ctx);
@@ -124,7 +124,7 @@ function paintGrid(ctx)
         {
           var frac = (animateSpec.frame / ANIMATE_FRAMES);
           var back = new Color(.58, .41, .92, 1);
-          baseColor = animateSpec.before.baseColor.interpolateToString(back, frac);
+          baseColor = animateSpec.before.lightBaseColor.interpolateToString(back, frac);
           shadowColor = animateSpec.before.shadowColor.interpolateToString(back, frac);
         }
         else
@@ -132,7 +132,7 @@ function paintGrid(ctx)
       } 
       else if (p)
       {
-        baseColor = p.baseColor;
+        baseColor = p.lightBaseColor;
         shadowColor = p.shadowColor;
       }
       else //No animation nor is this player owned. 
@@ -175,7 +175,7 @@ function paintGrid(ctx)
           y -= offsetBounce;
           
           shadowColor = animateSpec.after.shadowColor;
-          baseColor = animateSpec.after.baseColor.deriveLumination(-(offsetBounce / DROP_HEIGHT) * .1);
+          baseColor = animateSpec.after.lightBaseColor.deriveLumination(-(offsetBounce / DROP_HEIGHT) * .1);
           
           ctx.fillStyle = shadowColor.rgbString();
           ctx.fillRect(x, y + CELL_WIDTH, CELL_WIDTH, SHADOW_OFFSET);
@@ -285,7 +285,7 @@ function paintUIBar(ctx)
 
 function paint(ctx)
 {
-  ctx.fillStyle = 'whitesmoke';
+  ctx.fillStyle = '#e2ebf3';  //'whitesmoke';
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
   
   //Move grid to viewport as said with the offsets, below the stats
@@ -379,8 +379,8 @@ function centerOnPlayer(player, pos)
   var xOff = Math.floor(player.posX - (gameWidth / zoom - CELL_WIDTH) / 2);
   var yOff = Math.floor(player.posY - (gameHeight / zoom - CELL_WIDTH) / 2);
   var gridWidth = grid.size * CELL_WIDTH + BORDER_WIDTH * 2;
-  pos[0] = Math.max(Math.min(xOff, gridWidth + (BAR_WIDTH + 100) / zoom - gameWidth / zoom), 0);
-  pos[1] = Math.max(Math.min(yOff, gridWidth - gameHeight / zoom), 0);
+  pos[0] = xOff; //Math.max(Math.min(xOff, gridWidth + (BAR_WIDTH + 100) / zoom - gameWidth / zoom), 0);
+  pos[1] = yOff; //Math.max(Math.min(yOff, gridWidth - gameHeight / zoom), 0);
 }
 
 function getBounceOffset(frame)
