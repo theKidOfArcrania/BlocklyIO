@@ -19,22 +19,20 @@ var BAR_HEIGHT = SHADOW_OFFSET + CELL_WIDTH;
 var BAR_WIDTH = 400;
 
 
-var canvasWidth, canvasHeight, gameWidth, gameHeight, ctx, offctx, offscreenCanvas;
+var canvas, canvasWidth, canvasHeight, gameWidth, gameHeight, ctx, offctx, offscreenCanvas;
 
 $(function () {
-  var canvas = $("#main-ui")[0];
+  canvas = $("#main-ui")[0];
   ctx = canvas.getContext('2d');
   
   offscreenCanvas = document.createElement("canvas");
   offctx = offscreenCanvas.getContext('2d');
-
-  canvasWidth = offscreenCanvas.width = canvas.width = window.innerWidth;
-  canvasHeight = offscreenCanvas.height = canvas.height = window.innerHeight - 20;
-  canvas.style.marginTop = 20 / 2;
   
-  gameWidth = canvasWidth;
-  gameHeight = canvasHeight - BAR_HEIGHT;
+  canvas.style.marginTop = 10;
+  updateSize();
 });
+
+
 
 
 var allowAnimation = true;
@@ -57,6 +55,26 @@ grid = new Grid(GRID_SIZE, function(row, col, before, after) {
     frame: 0
   });
 });
+
+function updateSize()
+{
+  var changed = false;
+  if (canvasWidth != window.innerWidth)
+  {
+    gameWidth = canvasWidth = offscreenCanvas.width = canvas.width = window.innerWidth;
+    changed = true;
+  }
+  
+  if (canvasHeight != window.innerHeight - 20)
+  {
+    canvasHeight = offscreenCanvas.height = canvas.height = window.innerHeight - 20;
+    gameHeight = canvasHeight - BAR_HEIGHT;
+    changed = true;
+  }
+  
+  if (changed && user)
+    centerOnPlayer(user, offset);
+}
 
 function init() {
   animateGrid = new Grid(GRID_SIZE);
@@ -327,6 +345,7 @@ function paintDoubleBuff()
 }
 
 function update() {
+  updateSize();
   
   //Change grid offsets.
   for (var i = 0; i <= 1; i++)
