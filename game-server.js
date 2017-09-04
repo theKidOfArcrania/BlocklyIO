@@ -181,8 +181,12 @@ function Game(id)
       resp(false, false, locs.frame + " != " + fr);
       return;
     }
+    
+    
     for (var num in verify)
     {
+      if (!locs[num])
+        continue;
       if (locs[num][0] !== verify[num][0] || locs[num][1] !== verify[num][1] || locs[num][2] !== verify[num][2])
       {
         resp(false, true, 'P' + num +  ' ' + string(locs[num]) + ' !== ' + string(verify[num]));
