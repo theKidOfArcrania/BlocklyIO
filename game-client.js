@@ -1,5 +1,6 @@
 /* global $ */
 var Player = require("./player.js");
+var client = require("./player-client.js");
 var renderer = require("./game-renderer.js");
 var consts = require("./game-consts.js");
 var core = require("./game-core.js");
@@ -29,23 +30,8 @@ if ( !window.requestAnimationFrame ) {
   })();
 }
 
-var norun = false;
 function run() {
-  if (norun)
-    return; //Prevent multiple clicks.
-  norun = true;
-  
-  user = null;
-  deadFrames = 0;
-  
-  //Socket connection.
-  //, {transports: ['websocket'], upgrade: false}
-  connectServer();
-  socket.emit('hello', {
-    name: $("#name").val(),
-    type: 0, //Free-for-all
-    gameid: -1 //Requested game-id, or -1 for anyone.
-  }, function(success, msg) {
+  client.connect(function(success, msg) {
     if (success) 
     {
       console.info("Connected to game!");
@@ -147,7 +133,6 @@ var deadFrames = 0;
 var requesting = -1; //frame that we are requesting at.
 var frameCache = []; //Frames after our request.
 
-//TODO: check if we can connect to server.
 function connectServer() {
   io.j = [];
   io.sockets = [];
