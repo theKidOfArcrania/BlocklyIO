@@ -16,16 +16,23 @@ client.renderer = require("./game-renderer.js");
 // window.requestAnimationFrame = function( /* function FrameRequestCallback */ callback, /* DOMElement Element */ element ) {
 //       window.setTimeout( callback, 1000 / 60 );
 //     };
-
-if ( !this.requestAnimationFrame ) {
-  this.requestAnimationFrame = ( function() {
-    return this.webkitRequestAnimationFrame ||
-    this.mozRequestAnimationFrame ||
-    this.oRequestAnimationFrame ||
-    this.msRequestAnimationFrame ||
-    function( /* function FrameRequestCallback */ callback, /* DOMElement Element */ element ) {
-      setTimeout( callback, 1000 / 60 );
-    };
+var window, requestAnimationFrame;
+if ( !requestAnimationFrame ) {
+  requestAnimationFrame = ( function() {
+    if (window) {
+      return window.requestAnimationFrame ||
+      window.webkitRequestAnimationFrame ||
+      window.mozRequestAnimationFrame ||
+      window.oRequestAnimationFrame ||
+      window.msRequestAnimationFrame ||
+      function( /* function FrameRequestCallback */ callback, /* DOMElement Element */ element ) {
+        setTimeout( callback, 1000 / 60 );
+      };
+    } else {
+      return function( /* function FrameRequestCallback */ callback, /* DOMElement Element */ element ) {
+        setTimeout( callback, 1000 / 60 );
+      };
+    }
   })();
 }
 

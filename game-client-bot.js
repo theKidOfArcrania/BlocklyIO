@@ -10,12 +10,16 @@ var user;
 var GRID_SIZE = consts.GRID_SIZE;
 var CELL_WIDTH = consts.CELL_WIDTH;
 
-client.allowAnimation = false;
+function connect() {
+  client.connectGame(process.argv[2], process.argv[3] || '[BOT]', function(success, msg) {
+  });
+}
 
+client.allowAnimation = false;
 client.renderer = {
   disconnect: function() {
     console.log("I died...");
-    process.exit(0);
+    connect();
   },
   
   setUser: function(u) {
@@ -26,9 +30,9 @@ client.renderer = {
     if (frame % 6 == 1)
     {
       //TODO: decide move.
+      client.changeHeading(Math.floor(Math.random() * 4));
     }
   }
 };
 
-client.connectGame(process.argv[2], process.argv[3] || '[BOT]', function(success, msg) {
-});
+connect();
