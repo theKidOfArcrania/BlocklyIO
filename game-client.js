@@ -16,17 +16,15 @@ client.renderer = require("./game-renderer.js");
 // window.requestAnimationFrame = function( /* function FrameRequestCallback */ callback, /* DOMElement Element */ element ) {
 //       window.setTimeout( callback, 1000 / 60 );
 //     };
-var global;
-if (!global)
-  global = window;
-if ( !global.requestAnimationFrame ) {
-  global.requestAnimationFrame = ( function() {
-    return global.webkitRequestAnimationFrame ||
-    global.mozRequestAnimationFrame ||
-    global.oRequestAnimationFrame ||
-    global.msRequestAnimationFrame ||
+
+if ( !this.requestAnimationFrame ) {
+  this.requestAnimationFrame = ( function() {
+    return this.webkitRequestAnimationFrame ||
+    this.mozRequestAnimationFrame ||
+    this.oRequestAnimationFrame ||
+    this.msRequestAnimationFrame ||
     function( /* function FrameRequestCallback */ callback, /* DOMElement Element */ element ) {
-      global.setTimeout( callback, 1000 / 60 );
+      setTimeout( callback, 1000 / 60 );
     };
   })();
 }
@@ -35,7 +33,6 @@ function run() {
   client.connectGame('//' + window.location.hostname + ':8081', $('#name').val(), function(success, msg) {
     if (success) 
     {
-      console.info("Connected to game!");
       $("#begin").addClass("hidden");
       $("#begin").animate({
           opacity: 0
@@ -43,7 +40,6 @@ function run() {
     }
     else 
     {
-      console.error("Unable to connect to game: " + msg);
       var error = $("#error");
       error.text(msg);
     }

@@ -32,17 +32,15 @@ var grid = new Grid(consts.GRID_SIZE, function(row, col, before, after) {
 // window.requestAnimationFrame = function( /* function FrameRequestCallback */ callback, /* DOMElement Element */ element ) {
 //       window.setTimeout( callback, 1000 / 60 );
 //     };
-var global;
-if (!global)
-  global = window;
-if ( !global.requestAnimationFrame ) {
-  global.requestAnimationFrame = ( function() {
-    return global.webkitRequestAnimationFrame ||
-    global.mozRequestAnimationFrame ||
-    global.oRequestAnimationFrame ||
-    global.msRequestAnimationFrame ||
+
+if ( !this.requestAnimationFrame ) {
+  this.requestAnimationFrame = ( function() {
+    return this.webkitRequestAnimationFrame ||
+    this.mozRequestAnimationFrame ||
+    this.oRequestAnimationFrame ||
+    this.msRequestAnimationFrame ||
     function( /* function FrameRequestCallback */ callback, /* DOMElement Element */ element ) {
-      global.setTimeout( callback, 1000 / 60 );
+      setTimeout( callback, 1000 / 60 );
     };
   })();
 }
@@ -129,6 +127,7 @@ function connectGame(url, name, callback) {
     invokeRenderer('disconnect', []);
   });
   
+  console.log("HELLO");
   socket.emit('hello', {
     name: name,
     type: 0, //Free-for-all
@@ -327,7 +326,7 @@ function update() {
     invokeRenderer('removePlayer', [val]);
   });
   
-  invokeRenderer('update', []);
+  invokeRenderer('update', [frame]);
 }
 
 //Export stuff
