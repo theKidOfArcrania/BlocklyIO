@@ -134,7 +134,6 @@ function connectGame(url, name, callback) {
     invokeRenderer('disconnect', []);
   });
   
-  console.log("HELLO");
   socket.emit('hello', {
     name: name,
     type: 0, //Free-for-all
@@ -251,6 +250,7 @@ function processFrame(data)
     locs[p.num] = [p.posX, p.posY, p.waitLag];
   }
   
+  /*
   socket.emit('verify', {
     frame: frame,
     locs: locs
@@ -262,6 +262,7 @@ function processFrame(data)
         socket.emit('requestFrame');
     }
   }.bind(this, frame));
+  */
   
   dirty = true;
   requestAnimationFrame(function() {
