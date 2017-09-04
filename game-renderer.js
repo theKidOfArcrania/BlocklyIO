@@ -3,7 +3,7 @@ var Rolling = require("./rolling.js");
 var Color = require("./color.js");
 var Grid = require("./grid.js");
 var consts = require("./game-consts.js");
-var core = require("./game-core.js");
+var client = require("./player-client.js");
 
 var GRID_SIZE = consts.GRID_SIZE;
 var CELL_WIDTH = consts.CELL_WIDTH;
@@ -33,28 +33,9 @@ $(function () {
 });
 
 
-
-
-var allowAnimation = true;
-var animateGrid, players, allPlayers, playerPortion, portionsRolling, 
-  barProportionRolling, grid, animateTo, offset, user, zoom, kills, showedDead;
-
-grid = new Grid(GRID_SIZE, function(row, col, before, after) {
-  //Keep track of areas.
-  if (before)
-    playerPortion[before.num]--;
-  if (after)
-    playerPortion[after.num]++;
-    
-  //Queue animation
-  if (before === after || !allowAnimation)
-    return;
-  animateGrid.set(row, col, {
-    before: before,
-    after: after,
-    frame: 0
-  });
-});
+var animateGrid, playerPortion, portionsRolling, 
+  barProportionRolling,  animateTo, offset, user, zoom, showedDead;
+var grid = client.grid;
 
 function updateSize()
 {
@@ -76,12 +57,9 @@ function updateSize()
     centerOnPlayer(user, offset);
 }
 
-function init() {
+function reset() {
   animateGrid = new Grid(GRID_SIZE);
-  grid.reset();
   
-  players = [];
-  allPlayers = [];
   playerPortion = [];
   portionsRolling = [];
   barProportionRolling = [];
@@ -91,11 +69,11 @@ function init() {
   
   user = null;
   zoom = 1;
-  kills = 0;
+  
   showedDead = false;
 }
 
-init();
+reset();
 
 //Paint methods.
 function paintGridBorder(ctx) 
@@ -136,7 +114,7 @@ function paintGrid(ctx)
       var x = c * CELL_WIDTH, y = r * CELL_WIDTH, baseColor, shadowColor;
       
       var animateSpec = animateGrid.get(r, c);
-      if (allowAnimation && animateSpec)
+      if (client.allowAnimation && animateSpec)
       {
         if (animateSpec.before) //fading animation
         {
@@ -172,7 +150,7 @@ function paintGrid(ctx)
     }
   }
   
-  if (!allowAnimation)
+  if (!client.allowAnimation)
     return;
   
   //Paint squares with drop in animation.
@@ -183,7 +161,7 @@ function paintGrid(ctx)
       animateSpec = animateGrid.get(r, c);
       x = c * CELL_WIDTH, y = r * CELL_WIDTH;
       
-      if (animateSpec && allowAnimation) 
+      if (animateSpec && client.allowAnimation) 
       {
         var viewable = r >= minRow && r < maxRow && c >= minCol && c < maxCol;
         if (animateSpec.after && viewable)
@@ -212,6 +190,7 @@ function paintGrid(ctx)
 
 function paintUIBar(ctx)
 {
+  
   //UI Bar background
   ctx.fillStyle = "#24422c";
   ctx.fillRect(0, 0, canvasWidth, BAR_HEIGHT);
@@ -240,13 +219,13 @@ function paintUIBar(ctx)
   ctx.fillText((userPortions * 100).toFixed(3) + "%", 5 + barOffset, CELL_WIDTH - 5);
   
   //Number of kills
-  var killsText = "Kills: " + kills;
+  var killsText = "Kills: " + client.kills;
   var killsOffset = 20 + BAR_WIDTH + barOffset;
   ctx.fillText(killsText, killsOffset, CELL_WIDTH - 5);
   
   //Calcuate rank
   var sorted = [];
-  players.forEach(function(val) {
+  client.getPlayers().forEach(function(val) {
     sorted.push({player: val, portion: playerPortion[val.num]});
   });
   sorted.sort(function(a, b) {
@@ -262,12 +241,11 @@ function paintUIBar(ctx)
   if (sorted.length > 0)
   {
     var maxPortion = sorted[0].portion;
-    for (var i = 0; i < players.length; i++)
-    {
-      var rolling = barProportionRolling[players[i].num];
-      rolling.value = playerPortion[players[i].num] / maxPortion;
+    client.getPlayers().forEach(function(player) {
+      var rolling = barProportionRolling[player.num];
+      rolling.value = playerPortion[player.num] / maxPortion;
       rolling.update();
-    }
+    });
   }
   
   //Show leaderboard.
@@ -303,6 +281,7 @@ function paintUIBar(ctx)
 
 function paint(ctx)
 {
+  
   ctx.fillStyle = '#e2ebf3';  //'whitesmoke';
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
   
@@ -318,7 +297,7 @@ function paint(ctx)
   ctx.translate(-offset[0] + BORDER_WIDTH, -offset[1] + BORDER_WIDTH);
   
   paintGrid(ctx);
-  players.forEach(function (p) {
+  client.getPlayers().forEach(function (p) {
     var fr = p.waitLag;
     if (fr < ANIMATE_FRAMES)
       p.render(ctx, fr / ANIMATE_FRAMES);
@@ -352,7 +331,7 @@ function update() {
   {
     if (animateTo[i] !== offset[i])
     {
-      if (allowAnimation)
+      if (client.allowAnimation)
       {
         var delta = animateTo[i] - offset[i];
         var dir = Math.sign(delta);
@@ -365,28 +344,15 @@ function update() {
   }
   
   //Calculate player portions.
-  for (var i = 0; i < players.length; i++)
-  {
-    var roll = portionsRolling[players[i].num];
-    roll.value = playerPortion[players[i].num] / GRID_SIZE / GRID_SIZE;
+  client.getPlayers().forEach(function(player) {
+    var roll = portionsRolling[player.num];
+    roll.value = playerPortion[player.num] / GRID_SIZE / GRID_SIZE;
     roll.update();
-  }
+  });
   
   //Zoom goes from 1 to .5, decreasing as portion goes up. TODO: maybe can modify this?
   if (portionsRolling[user.num])
     zoom = 1 / (portionsRolling[user.num].lag + 1); 
-  
-  var dead = [];
-  core.updateFrame(grid, players, dead, function addKill(killer, other)
-  {
-    if (players[killer] === user && killer !== other)
-      kills++;
-  });
-  dead.forEach(function(val) {
-    console.log(val.name || "Unnamed" + " is dead");
-    delete allPlayers[val.num];
-    delete portionsRolling[val.num];
-  });
   
   //TODO: animate player is dead. (maybe explosion?), and tail rewinds itself.
   if (user) centerOnPlayer(user, animateTo);
@@ -428,51 +394,59 @@ function getBounceOffset(frame)
   }
 }
 
-
+function showStats() {
+  //TODO: Show score stats.
+  $("#begin").removeClass("hidden");
+  $("#begin").animate({
+    opacity: .9999
+  }, 1000, function() {
+    $("#stats").addClass("hidden").css("opacity", 0);
+  });
+}
 
 module.exports = exports = {
   addPlayer: function(player) {
-    if (allPlayers[player.num])
-      return; //Already added.
-    allPlayers[player.num] = players[players.length] = player;
     playerPortion[player.num] = 0;
     portionsRolling[player.num] = new Rolling(9 / GRID_SIZE / GRID_SIZE, ANIMATE_FRAMES);
     barProportionRolling[player.num] = new Rolling(0, ANIMATE_FRAMES);
-    return players.length - 1;
   },
-  getPlayer: function(ind) {
-    if (ind < 0 || ind >= players.length)
-      throw new RangeError("Player index out of bounds (" + ind + ").");
-    return players[ind];
+  disconnect: function() {
+    //Show score stats.
+    $("#stats").removeClass("hidden");
+    $("#stats").animate({
+      opacity: .9999
+    }, 3000, function() {
+      showStats();
+      //Then fade back into the login screen.
+    });
   },
-  getPlayerFromNum: function(num) {
-    return allPlayers[num];
+  removePlayer: function(player) {
+    delete playerPortion[player.num];
+    delete portionsRolling[player.num];
+    delete barProportionRolling[player.num];
   },
-  playerSize: function() {
-    return players.length;
-  },
+  
   setUser: function(player) {
     user = player;
     centerOnPlayer(user, offset);
   },
-  incrementKill: function() {
-    kills++;
-  },
-  reset: function() {
-    init();
+  reset: reset,
+  updateGrid: function(row, col, before, after) {
+    //Keep track of areas.
+    if (before)
+      playerPortion[before.num]--;
+    if (after)
+      playerPortion[after.num]++;
+      
+    //Queue animation
+    if (before === after || !client.allowAnimation)
+      return;
+    animateGrid.set(row, col, {
+      before: before,
+      after: after,
+      frame: 0
+    });
   },
   paint: paintDoubleBuff,
   update: update
 };
-
-Object.defineProperties(exports, {
-  allowAnimation: {
-    get: function() { return allowAnimation; },
-    set: function(val) { allowAnimation = !!val; },
-    enumerable: true
-  },
-  grid: {
-    get: function() { return grid; },
-    enumerable: true
-  }
-});
