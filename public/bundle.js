@@ -118,10 +118,18 @@ client.renderer = require("./game-renderer.js");
 // window.requestAnimationFrame = function( /* function FrameRequestCallback */ callback, /* DOMElement Element */ element ) {
 //       window.setTimeout( callback, 1000 / 60 );
 //     };
-var window, requestAnimationFrame;
+var hasWindow;
+try {
+  window.document;
+  hasWindow = true;
+} catch (e) {
+  hasWindow = false;
+}
+
+var requestAnimationFrame;
 if ( !requestAnimationFrame ) {
   requestAnimationFrame = ( function() {
-    if (window) {
+    if (hasWindow) {
       return window.requestAnimationFrame ||
       window.webkitRequestAnimationFrame ||
       window.mozRequestAnimationFrame ||
@@ -8687,10 +8695,18 @@ var grid = new Grid(consts.GRID_SIZE, function(row, col, before, after) {
 //       window.setTimeout( callback, 1000 / 60 );
 //     };
 
-var window, requestAnimationFrame;
+var hasWindow;
+try {
+  window.document;
+  hasWindow = true;
+} catch (e) {
+  hasWindow = false;
+}
+
+var requestAnimationFrame;
 if ( !requestAnimationFrame ) {
   requestAnimationFrame = ( function() {
-    if (window) {
+    if (hasWindow) {
       return window.requestAnimationFrame ||
       window.webkitRequestAnimationFrame ||
       window.mozRequestAnimationFrame ||
