@@ -3,8 +3,8 @@ if (process.argv.length < 3) {
   process.exit(1);
 }
 
-var core = require("./game-core");
-var client = require("./player-client.js");
+var core = require("../game-core");
+var client = require("../client");
 var user;
 
 var GRID_SIZE = core.GRID_SIZE;
