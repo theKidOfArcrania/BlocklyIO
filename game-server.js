@@ -8,24 +8,27 @@ var MAX_PLAYERS = core.MAX_PLAYERS;
 var HUES = [0, 10, 20, 25, 30, 35, 40, 45, 50, 60, 70, 100, 110, 120, 125, 130, 135, 140, 145, 150, 160, 170, 180, 190, 200, 210, 220].map(function(val) {return val / 240});
 var SATS = [192, 150, 100].map(function(val) {return val / 240});
 
+function log(msg) {
+  console.log('[' + new Date() + '] ' + msg);
+}
 
 function Game(id)
-{
-  //Shuffle the hues.
-  for (var i = 0; i < HUES.length * 50; i++)
-  {
-    var a = Math.floor(Math.random() * HUES.length); 
-    var b = Math.floor(Math.random() * HUES.length); 
-    var tmp = HUES[a];
-    HUES[a] = HUES[b];
-    HUES[b] = tmp;
-  }
-  
+{ 
   var possColors = new Array(SATS.length * HUES.length);
   i = 0;
   for (var s = 0; s < SATS.length; s++)
     for (var h = 0; h < HUES.length; h++)
       possColors[i++] = new core.Color(HUES[h], SATS[s], .5, 1);
+  
+  //Shuffle the colors.
+  for (var i = 0; i < possColors.length * 50; i++)
+  {
+    var a = Math.floor(Math.random() * possColors.length); 
+    var b = Math.floor(Math.random() * possColors.length); 
+    var tmp = possColors[a];
+    possColors[a] = possColors[b];
+    possColors[b] = tmp;
+  }
   
   var nextInd = 0;
   var players = [];
@@ -42,7 +45,7 @@ function Game(id)
       else
         filled--;
       if (filled === GRID_SIZE * GRID_SIZE)
-        console.log("FULL GAME");
+        log("FULL GAME");
     }
   });
   
@@ -73,7 +76,7 @@ function Game(id)
     nextInd++;
     core.initPlayer(grid, p);
     
-    console.log((p.name || "Unnamed") + " (" + p.num + ") joined.");
+    log((p.name || "Unnamed") + " (" + p.num + ") joined.");
     
     client.on("requestFrame", function () {
       if (p.frame === frame)
@@ -139,7 +142,7 @@ function Game(id)
     client.on('disconnect', function() {
       p.die(); //Die immediately if not already.
       p.disconnected = true;
-      console.log((p.name || "Unnamed") + " (" + p.num + ") left.");
+      log((p.name || "Unnamed") + " (" + p.num + ") left.");
     });
     return true;
   };
@@ -239,10 +242,10 @@ function Game(id)
     {
       if (!pl.handledDead)
       {
-        possColors.unshift(pl.baseColor);
+        possColors.push(pl.baseColor);
         pl.handledDead = true;
       }
-      console.log((pl.name || "Unnamed") + " (" + pl.num + ") died.");
+      log((pl.name || "Unnamed") + " (" + pl.num + ") died.");
       pl.client.emit("dead");
       pl.client.disconnect(true); 
     }
