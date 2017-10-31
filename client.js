@@ -1,11 +1,10 @@
-var Player = require('./player.js');
-var Grid = require('./grid.js');
-var consts = require('./game-consts.js');
-var core = require('./game-core.js');
+var core = require('./game-core');
+var Player = core.Player;
+
 var io = require('socket.io-client');
 
-var GRID_SIZE = consts.GRID_SIZE;
-var CELL_WIDTH = consts.CELL_WIDTH;
+var GRID_SIZE = core.GRID_SIZE;
+var CELL_WIDTH = core.CELL_WIDTH;
 
 var running = false;
 var user, socket, frame;
@@ -21,7 +20,7 @@ var frameCache = []; //Frames after our request.
 
 var allowAnimation = true;
 
-var grid = new Grid(consts.GRID_SIZE, function(row, col, before, after) {
+var grid = new core.Grid(core.GRID_SIZE, function(row, col, before, after) {
   invokeRenderer('updateGrid', [row, col, before, after]);
 }); 
 

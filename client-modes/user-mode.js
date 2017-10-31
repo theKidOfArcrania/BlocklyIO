@@ -1,14 +1,13 @@
 /* global $ */
-var Rolling = require("./rolling.js");
-var Color = require("./color.js");
-var Grid = require("./grid.js");
-var consts = require("./game-consts.js");
-var client = require("./player-client.js");
 
-var GRID_SIZE = consts.GRID_SIZE;
-var CELL_WIDTH = consts.CELL_WIDTH;
-var SPEED = consts.SPEED;
-var BORDER_WIDTH = consts.BORDER_WIDTH;
+var core = require("../game-core");
+var client = require("../client");
+var Rolling = require("./rolling");
+
+var GRID_SIZE = core.GRID_SIZE;
+var CELL_WIDTH = core.CELL_WIDTH;
+var SPEED = core.SPEED;
+var BORDER_WIDTH = core.BORDER_WIDTH;
 var SHADOW_OFFSET = 5;
 var ANIMATE_FRAMES = 24;
 var BOUNCE_FRAMES = [8, 4];
@@ -58,7 +57,7 @@ function updateSize()
 }
 
 function reset() {
-  animateGrid = new Grid(GRID_SIZE);
+  animateGrid = new core.Grid(GRID_SIZE);
   
   playerPortion = [];
   portionsRolling = [];
@@ -119,7 +118,7 @@ function paintGrid(ctx)
         if (animateSpec.before) //fading animation
         {
           var frac = (animateSpec.frame / ANIMATE_FRAMES);
-          var back = new Color(.58, .41, .92, 1);
+          var back = new core.Color(.58, .41, .92, 1);
           baseColor = animateSpec.before.lightBaseColor.interpolateToString(back, frac);
           shadowColor = animateSpec.before.shadowColor.interpolateToString(back, frac);
         }

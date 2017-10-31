@@ -1,14 +1,9 @@
 
-var Color = require("./color");
-var Grid = require("./grid");
-var Player = require("./player");
-//var Gate = require("./gate");
 var core = require("./game-core");
-var consts = require("./game-consts");
 
-var GRID_SIZE = consts.GRID_SIZE;
-var CELL_WIDTH = consts.CELL_WIDTH;
-var MAX_PLAYERS = consts.MAX_PLAYERS;
+var GRID_SIZE = core.GRID_SIZE;
+var CELL_WIDTH = core.CELL_WIDTH;
+var MAX_PLAYERS = core.MAX_PLAYERS;
 
 var HUES = [0, 10, 20, 25, 30, 35, 40, 45, 50, 60, 70, 100, 110, 120, 125, 130, 135, 140, 145, 150, 160, 170, 180, 190, 200, 210, 220].map(function(val) {return val / 240});
 var SATS = [192, 150, 100].map(function(val) {return val / 240});
@@ -30,7 +25,7 @@ function Game(id)
   i = 0;
   for (var s = 0; s < SATS.length; s++)
     for (var h = 0; h < HUES.length; h++)
-      possColors[i++] = new Color(HUES[h], SATS[s], .5, 1);
+      possColors[i++] = new core.Color(HUES[h], SATS[s], .5, 1);
   
   var nextInd = 0;
   var players = [];
@@ -39,7 +34,7 @@ function Game(id)
   var frame = 0;
   
   var filled = 0;
-  var grid = new Grid(GRID_SIZE, function(row, col, before, after) {
+  var grid = new core.Grid(GRID_SIZE, function(row, col, before, after) {
     if (!!after ^ !!before)
     {
       if (after)
@@ -70,7 +65,7 @@ function Game(id)
       base: possColors.shift()
     };
     
-    var p = new Player(grid, params);
+    var p = new core.Player(grid, params);
     p.tmpHeading = params.currentHeading;
     p.client = client;
     players.push(p);

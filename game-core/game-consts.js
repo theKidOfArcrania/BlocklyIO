@@ -1,5 +1,4 @@
-function constant(val)
-{
+function constant(val) {
   return {
     value: val,
     enumerable: true

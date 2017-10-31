@@ -1,5 +1,5 @@
-var Stack = require("./stack.js");
-var Color = require("./color.js");
+var Stack = require("./stack");
+var Color = require("./color");
 var Grid = require("./grid.js");
 var consts = require("./game-consts.js");
 

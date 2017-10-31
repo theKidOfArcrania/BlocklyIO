@@ -3,12 +3,12 @@ if (process.argv.length < 3) {
   process.exit(1);
 }
 
+var core = require("./game-core");
 var client = require("./player-client.js");
-var consts = require("./game-consts.js");
 var user;
 
-var GRID_SIZE = consts.GRID_SIZE;
-var CELL_WIDTH = consts.CELL_WIDTH;
+var GRID_SIZE = core.GRID_SIZE;
+var CELL_WIDTH = core.CELL_WIDTH;
 
 function connect() {
   client.connectGame(process.argv[2], process.argv[3] || '[BOT]', function(success, msg) {

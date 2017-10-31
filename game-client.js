@@ -1,13 +1,13 @@
 /* global $ */
-var client = require("./player-client.js");
-var consts = require("./game-consts.js");
+var client = require("./client");
+var core = require("./game-core");
 var io = require('socket.io-client');
 
-var GRID_SIZE = consts.GRID_SIZE;
-var CELL_WIDTH = consts.CELL_WIDTH;
+var GRID_SIZE = core.GRID_SIZE;
+var CELL_WIDTH = core.CELL_WIDTH;
 
 client.allowAnimation = true;
-client.renderer = require("./game-renderer.js");
+client.renderer = require("./client-modes/user-mode");
   
 /**
  * Provides requestAnimationFrame in a cross browser way. (edited so that this is also compatible with node.)

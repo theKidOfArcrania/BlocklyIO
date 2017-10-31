@@ -1,392 +1,43 @@
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 
-
-function Color(h, s, l, a)
+function Rolling(value, frames)
 {
-  verifyRange(h, s, l);
-  if (a === undefined) a = 1;
-  else verifyRange(a);
+  var lag = 0;
   
-  Object.defineProperties(this, {
-    "hue": {value: h, enumerable: true},
-    "sat": {value: s, enumerable: true},
-    "lum": {value: l, enumerable: true},
-    "alpha": {value: a, enumerable: true},
+  if (!frames)
+    frames = 24;
+  
+  this.value = value;
+  
+  Object.defineProperty(this, "lag", {
+    get: function() { return lag; },
+    enumerable: true
   });
-}
-
-Color.fromData = function(data) {
-  return new Color(data.hue, data.sat, data.lum, data.alpha);
-};
-
-function verifyRange()
-{
-  for (var i = 0; i < arguments.length; i++)
-  {
-    if (arguments[i] < 0 || arguments[i] > 1)
-      throw new RangeError("H, S, L, and A parameters must be between the range [0, 1]");
+  this.update = function() {
+    var delta = this.value - lag;
+    var dir = Math.sign(delta);
+    var speed = Math.abs(delta) / frames;
+    var mag = Math.min(Math.abs(speed), Math.abs(delta));
+    
+    lag += mag * dir;
+    return lag;
   }
 }
 
-Color.prototype.interpolateToString = function(color, amount)
-{
-  var rgbThis = hslToRgb(this.hue, this.sat, this.lum);
-  var rgbThat = hslToRgb(color.hue, color.sat, color.lum);
-  var rgb = [];
-  
-  for (var i = 0; i < 3; i++)
-    rgb[i] = Math.floor((rgbThat[i] - rgbThis[i]) * amount + rgbThis[i]);
-  return {rgbString: function() {return 'rgb(' + rgb[0] + ', ' + rgb[1] + ', ' + rgb[2] + ')'}};
-}
-
-Color.prototype.deriveLumination = function(amount)
-{
-  var lum = this.lum + amount;
-  lum = Math.min(Math.max(lum, 0), 1);
-  return new Color(this.hue, this.sat, lum, this.alpha);
-};
-
-Color.prototype.deriveHue = function(amount)
-{
-  var hue = this.hue - amount;
-  return new Color(hue - Math.floor(hue), this.sat, this.lum, this.alpha);
-};
-
-Color.prototype.deriveSaturation = function(amount)
-{
-  var sat = this.sat + amount;
-  sat = Math.min(Math.max(sat, 0), 1);
-  return new Color(this.hue, sat, this.lum, this.alpha);
-};
-
-Color.prototype.deriveAlpha = function(newAlpha)
-{
-  verifyRange(newAlpha);
-  return new Color(this.hue, this.sat, this.lum, newAlpha);
-};
-
-Color.prototype.rgbString = function() {
-  var rgb = hslToRgb(this.hue, this.sat, this.lum);
-  rgb[3] = this.a;
-  return 'rgba(' + rgb[0] + ', ' + rgb[1] + ', ' + rgb[2] + ', ' + this.alpha + ')';
-};
+module.exports = Rolling;
 
 
-//http://stackoverflow.com/a/9493060/7344257
-function hslToRgb(h, s, l){
-  var r, g, b;
-
-  if(s == 0){
-    r = g = b = l; // achromatic
-  }else{
-    var hue2rgb = function hue2rgb(p, q, t){
-      if(t < 0) t += 1;
-      if(t > 1) t -= 1;
-      if(t < 1/6) return p + (q - p) * 6 * t;
-      if(t < 1/2) return q;
-      if(t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-      return p;
-    };
-
-    var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-    var p = 2 * l - q;
-    r = hue2rgb(p, q, h + 1/3);
-    g = hue2rgb(p, q, h);
-    b = hue2rgb(p, q, h - 1/3);
-  }
-
-  return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
-}
-
-module.exports = Color;
 },{}],2:[function(require,module,exports){
 /* global $ */
-var client = require("./player-client.js");
-var consts = require("./game-consts.js");
-var io = require('socket.io-client');
 
-var GRID_SIZE = consts.GRID_SIZE;
-var CELL_WIDTH = consts.CELL_WIDTH;
+var core = require("../game-core");
+var client = require("../client");
+var Rolling = require("./rolling");
 
-client.allowAnimation = true;
-client.renderer = require("./game-renderer.js");
-  
-/**
- * Provides requestAnimationFrame in a cross browser way. (edited so that this is also compatible with node.)
- * @author paulirish / http://paulirish.com/
- */
-// window.requestAnimationFrame = function( /* function FrameRequestCallback */ callback, /* DOMElement Element */ element ) {
-//       window.setTimeout( callback, 1000 / 60 );
-//     };
-var hasWindow;
-try {
-  window.document;
-  hasWindow = true;
-} catch (e) {
-  hasWindow = false;
-}
-
-var requestAnimationFrame;
-if ( !requestAnimationFrame ) {
-  requestAnimationFrame = ( function() {
-    if (hasWindow) {
-      return window.requestAnimationFrame ||
-      window.webkitRequestAnimationFrame ||
-      window.mozRequestAnimationFrame ||
-      window.oRequestAnimationFrame ||
-      window.msRequestAnimationFrame ||
-      function( /* function FrameRequestCallback */ callback, /* DOMElement Element */ element ) {
-        setTimeout( callback, 1000 / 60 );
-      };
-    } else {
-      return function( /* function FrameRequestCallback */ callback, /* DOMElement Element */ element ) {
-        setTimeout( callback, 1000 / 60 );
-      };
-    }
-  })();
-}
-
-function run() {
-  client.connectGame('//' + window.location.hostname + ':8081', $('#name').val(), function(success, msg) {
-    if (success) 
-    {
-      $("#begin").addClass("hidden");
-      $("#begin").animate({
-          opacity: 0
-      }, 1000);
-    }
-    else 
-    {
-      var error = $("#error");
-      error.text(msg);
-    }
-  });
-}
-
-$(function() {
-  var error = $("#error");
-  
-  if (!window.WebSocket)
-  {
-    error.text("Your browser does not support WebSockets!");
-    return;
-  }
-  
-  error.text("Loading..."); //TODO: show loading screen.
-  var success = false;
-  var socket = io('http://' + window.location.hostname + ':8081', {
-    'forceNew': true,
-    upgrade: false,
-    transports: ['websocket']
-  });
-  
-  socket.on('connect_error', function() {
-    if (!success)
-      error.text("Cannot connect with server. This probably is due to misconfigured proxy server. (Try using a different browser)");
-  });
-  socket.emit("checkConn", function() {
-    success = true;
-    socket.disconnect();
-  });
-  setTimeout(function() {
-    if (!success)
-      error.text("Cannot connect with server. This probably is due to misconfigured proxy server. (Try using a different browser)");
-    else
-    {
-      error.text("");
-      $("input").keypress(function(evt) {
-        if (evt.which === 13)
-          requestAnimationFrame(run);
-      });
-      $("button").click(function(evt) {
-        requestAnimationFrame(run);
-      });
-    }
-  }, 2000);
-});
-
-
-//Event listeners
-$(document).keydown(function(e) {
-  var newHeading = -1;
-  switch (e.which)
-  {
-    case 37: newHeading = 3; break; //LEFT
-    case 38: newHeading = 0; break; //UP
-    case 39: newHeading = 1; break; //RIGHT
-    case 40: newHeading = 2; break; //DOWN
-    default: return; //exit handler for other keys.
-  }
-  
-  client.changeHeading(newHeading);
-  e.preventDefault();
-});
-},{"./game-consts.js":3,"./game-renderer.js":5,"./player-client.js":56,"socket.io-client":42}],3:[function(require,module,exports){
-function constant(val)
-{
-  return {
-    value: val,
-    enumerable: true
-  };
-}
-
-var consts = {
-  GRID_SIZE: constant(80),
-  CELL_WIDTH: constant(40),
-  SPEED: constant(5),
-  BORDER_WIDTH: constant(20),
-  MAX_PLAYERS: constant(81)
-};
-
-Object.defineProperties(module.exports, consts);
-},{}],4:[function(require,module,exports){
-var ANIMATE_FRAMES = 24;
-var CELL_WIDTH = 40;
-
-//TODO: remove constants.
-exports.initPlayer = function(grid, player)
-{
-  for (var dr = -1; dr <= 1; dr++)
-    for (var dc = -1; dc <= 1; dc++)
-      if (!grid.isOutOfBounds(dr + player.row, dc + player.col))
-        grid.set(dr + player.row, dc + player.col, player);
-};
-exports.updateFrame = function(grid, players, dead, notifyKill)
-{
-  var adead = [];
-  if (dead instanceof Array)
-    adead = dead;
-  
-  var kill;
-  if (!notifyKill)
-    kill = function() {};
-  else
-    kill = function(killer, other) {if (!removing[other]) notifyKill(killer, other);};
-  
-  //Move players.  
-  var tmp = players.filter(function(val) {
-    val.move();
-    if (val.dead)
-      adead.push(val);
-    return !val.dead;
-  });
-  
-  //Remove players with collisions.
-  var removing = new Array(players.length);
-  for (var i = 0; i < players.length; i++)
-  {
-    for (var j = i; j < players.length; j++)
-    {
-      
-      //Remove those players when other players have hit their tail.
-      if (!removing[j] && players[j].tail.hitsTail(players[i]))
-      {
-        kill(i, j);
-        removing[j] = true;
-        //console.log("TAIL");
-      }
-      if (!removing[i] && players[i].tail.hitsTail(players[j]))
-      {
-        kill(j, i);
-        removing[i] = true;
-        //console.log("TAIL");
-      }
-      
-      //Remove players with collisons...
-      if (i !== j && squaresIntersect(players[i].posX, players[j].posX) &&
-        squaresIntersect(players[i].posY, players[j].posY))
-      {
-        //...if one player is own his own territory, the other is out.
-        if (grid.get(players[i].row, players[i].col) === players[i])
-        {
-          kill(i, j);
-          removing[j] = true;
-        }
-        else if (grid.get(players[j].row, players[j].col) === players[j])
-        {
-          kill(j, i);
-          removing[i] = true;
-        }
-        else
-        {
-          //...otherwise, the one that sustains most of the collision will be removed.
-          var areaI = area(players[i]);
-          var areaJ = area(players[j]);
-          
-          if (areaI === areaJ)
-          {
-            kill(i, j);
-            kill(j, i);
-            removing[i] = removing[j] = true;
-          }
-          else if (areaI > areaJ)
-          {
-            kill(j, i);
-            removing[i] = true;
-          }
-          else
-          {
-            kill(i, j);
-            removing[j] = true;
-          }
-        }
-      }
-    }
-  }
-  
-  tmp = tmp.filter(function(val, i) {
-    if (removing[i])
-    {
-      adead.push(val);
-      val.die();
-    }
-    return !removing[i];
-  });
-  players.length = tmp.length;
-  for (var i = 0; i < tmp.length; i++)
-    players[i] = tmp[i];
-  
-  //Remove dead squares.
-  for (var r = 0; r < grid.size; r++)
-  {
-    for (var c = 0; c < grid.size; c++)
-    {
-      if (adead.indexOf(grid.get(r, c)) !== -1)
-        grid.set(r, c, null);
-    }
-  }
-};
-
-function squaresIntersect(a, b)
-{
-  if (a < b)
-    return b < a + CELL_WIDTH;
-  else
-    return a < b + CELL_WIDTH;
-}
-
-function area(player)
-{
-  var xDest = player.col * CELL_WIDTH;
-  var yDest = player.row * CELL_WIDTH;
-  
-  if (player.posX === xDest)
-    return Math.abs(player.posY - yDest);
-  else
-    return Math.abs(player.posX - xDest);
-}
-},{}],5:[function(require,module,exports){
-/* global $ */
-var Rolling = require("./rolling.js");
-var Color = require("./color.js");
-var Grid = require("./grid.js");
-var consts = require("./game-consts.js");
-var client = require("./player-client.js");
-
-var GRID_SIZE = consts.GRID_SIZE;
-var CELL_WIDTH = consts.CELL_WIDTH;
-var SPEED = consts.SPEED;
-var BORDER_WIDTH = consts.BORDER_WIDTH;
+var GRID_SIZE = core.GRID_SIZE;
+var CELL_WIDTH = core.CELL_WIDTH;
+var SPEED = core.SPEED;
+var BORDER_WIDTH = core.BORDER_WIDTH;
 var SHADOW_OFFSET = 5;
 var ANIMATE_FRAMES = 24;
 var BOUNCE_FRAMES = [8, 4];
@@ -436,7 +87,7 @@ function updateSize()
 }
 
 function reset() {
-  animateGrid = new Grid(GRID_SIZE);
+  animateGrid = new core.Grid(GRID_SIZE);
   
   playerPortion = [];
   portionsRolling = [];
@@ -497,7 +148,7 @@ function paintGrid(ctx)
         if (animateSpec.before) //fading animation
         {
           var frac = (animateSpec.frame / ANIMATE_FRAMES);
-          var back = new Color(.58, .41, .92, 1);
+          var back = new core.Color(.58, .41, .92, 1);
           baseColor = animateSpec.before.lightBaseColor.interpolateToString(back, frac);
           shadowColor = animateSpec.before.shadowColor.interpolateToString(back, frac);
         }
@@ -828,7 +479,756 @@ module.exports = exports = {
   paint: paintDoubleBuff,
   update: update
 };
-},{"./color.js":1,"./game-consts.js":3,"./grid.js":6,"./player-client.js":56,"./rolling.js":58}],6:[function(require,module,exports){
+
+},{"../client":3,"../game-core":9,"./rolling":1}],3:[function(require,module,exports){
+var core = require('./game-core');
+var Player = core.Player;
+
+var io = require('socket.io-client');
+
+var GRID_SIZE = core.GRID_SIZE;
+var CELL_WIDTH = core.CELL_WIDTH;
+
+var running = false;
+var user, socket, frame;
+var players, allPlayers;
+
+var kills;
+
+var timeout = undefined;
+var dirty = false;
+var deadFrames = 0;
+var requesting = -1; //frame that we are requesting at.
+var frameCache = []; //Frames after our request.
+
+var allowAnimation = true;
+
+var grid = new core.Grid(core.GRID_SIZE, function(row, col, before, after) {
+  invokeRenderer('updateGrid', [row, col, before, after]);
+}); 
+
+/**
+ * Provides requestAnimationFrame in a cross browser way. (edited so that this is also compatible with node.)
+ * @author paulirish / http://paulirish.com/
+ */
+// window.requestAnimationFrame = function( /* function FrameRequestCallback */ callback, /* DOMElement Element */ element ) {
+//       window.setTimeout( callback, 1000 / 60 );
+//     };
+
+var hasWindow;
+try {
+  window.document;
+  hasWindow = true;
+} catch (e) {
+  hasWindow = false;
+}
+
+var requestAnimationFrame;
+if ( !requestAnimationFrame ) {
+  requestAnimationFrame = ( function() {
+    if (hasWindow) {
+      return window.requestAnimationFrame ||
+      window.webkitRequestAnimationFrame ||
+      window.mozRequestAnimationFrame ||
+      window.oRequestAnimationFrame ||
+      window.msRequestAnimationFrame ||
+      function( /* function FrameRequestCallback */ callback, /* DOMElement Element */ element ) {
+        setTimeout( callback, 1000 / 60 );
+      };
+    } else {
+      return function( /* function FrameRequestCallback */ callback, /* DOMElement Element */ element ) {
+        setTimeout( callback, 1000 / 60 );
+      };
+    }
+  })();
+}
+
+//Public API
+function connectGame(url, name, callback) {
+  if (running)
+    return; //Prevent multiple runs.
+  running = true;
+  
+  user = null;
+  deadFrames = 0;
+  
+  //Socket connection.
+  io.j = [];
+  io.sockets = [];
+  socket = io(url, {
+    'forceNew': true,
+    upgrade: false,
+    transports: ['websocket']
+  });
+  socket.on('connect', function(){
+    console.info('Connected to server.');
+  });
+  socket.on('game', function(data) {
+    if (timeout != undefined)
+      clearTimeout(timeout);
+    
+    //Initialize game.
+    //TODO: display data.gameid --- game id #
+    frame = data.frame;
+    
+    reset();
+    
+    //Load players.
+    data.players.forEach(function(p) {
+      var pl = new Player(grid, p);
+      addPlayer(pl);
+    });
+    user = allPlayers[data.num];
+    if (!user) 
+      throw new Error();
+    setUser(user);
+    
+    //Load grid.
+    var gridData = new Uint8Array(data.grid);
+    for (var r = 0; r < grid.size; r++)
+      for (var c = 0; c < grid.size; c++)
+      {
+        var ind = gridData[r * grid.size + c] - 1;
+        grid.set(r, c, ind === -1 ? null : players[ind]);
+      }
+    
+    invokeRenderer('paint', []);
+    frame = data.frame;
+    
+    if (requesting !== -1)
+    {
+      //Update those cache frames after we updated game.
+      var minFrame = requesting;
+      requesting = -1;
+      while (frameCache.length > frame - minFrame)
+        processFrame(frameCache[frame - minFrame]);
+      frameCache = [];
+    }
+  });
+  
+  socket.on('notifyFrame', processFrame);
+  
+  socket.on('dead', function() {
+    socket.disconnect(); //In case we didn't get the disconnect call.
+  });
+  
+  socket.on('disconnect', function(){
+    if (!user)
+      return;
+    console.info('Server has disconnected. Creating new game.');
+    socket.disconnect();
+    user.die();
+    dirty = true;
+    paintLoop();
+    running = false;
+    invokeRenderer('disconnect', []);
+  });
+  
+  socket.emit('hello', {
+    name: name,
+    type: 0, //Free-for-all
+    gameid: -1 //Requested game-id, or -1 for anyone.
+  }, function(success, msg) {
+    if (success) 
+      console.info('Connected to game!');
+    else {
+      console.error('Unable to connect to game: ' + msg);
+      running = false;
+    }
+    if (callback)
+      callback(success, msg);
+  });
+  
+  
+}
+
+function changeHeading(newHeading) {
+  if (!user || user.dead)
+    return;
+  if (newHeading === user.currentHeading || ((newHeading % 2 === 0) ^ 
+    (user.currentHeading % 2 === 0)))
+  {
+    //user.heading = newHeading;
+    if (socket) {
+      socket.emit('frame', {
+        frame: frame,
+        heading: newHeading
+      }, function(success, msg) {
+        if (!success)
+          console.error(msg);
+      });
+    }
+  }
+}
+
+function getPlayers() {
+  return players.slice();
+}
+
+//Private API
+function addPlayer(player) {
+  if (allPlayers[player.num])
+    return; //Already added.
+  allPlayers[player.num] = players[players.length] = player;
+  invokeRenderer('addPlayer', [player]);
+  return players.length - 1;
+}
+
+function invokeRenderer(name, args) {
+  var renderer = exports.renderer;
+  if (renderer && typeof renderer[name] === 'function')
+    renderer[name].apply(exports, args);
+}
+
+
+function processFrame(data)
+{
+  if (timeout != undefined)
+      clearTimeout(timeout);
+    
+  if (requesting !== -1 && requesting < data.frame)
+  {
+    frameCache.push(data);
+    return;
+  }
+  
+  if (data.frame - 1 !== frame)
+  {
+    console.error('Frames don\'t match up!');
+    socket.emit('requestFrame'); //Restore data.
+    requesting = data.frame;
+    frameCache.push(data);
+    return;
+  }
+  
+  frame++;
+  if (data.newPlayers)
+  {
+    data.newPlayers.forEach(function(p) {
+      if (p.num === user.num)
+        return;
+      var pl = new Player(grid, p);
+      addPlayer(pl);
+      core.initPlayer(grid, pl);
+    });
+  }
+  
+  var found = new Array(players.length);
+  data.moves.forEach(function(val, i) {
+    var player = allPlayers[val.num];
+    if (!player) return;
+    if (val.left) player.die();
+    found[i] = true;
+    player.heading = val.heading;
+  });
+  for (var i = 0; i < players.length; i++)
+  {
+    //Implicitly leaving game.
+    if (!found[i])
+    {
+      var player = players[i];
+      player && player.die();
+    }
+  }
+  
+  update();
+  
+  var locs = {};
+  for (var i = 0; i < players.length; i++)
+  {
+    var p = players[i];
+    locs[p.num] = [p.posX, p.posY, p.waitLag];
+  }
+  
+  /*
+  socket.emit('verify', {
+    frame: frame,
+    locs: locs
+  }, function(frame, success, adviceFix, msg) {
+    if (!success && requesting === -1) 
+    {
+      console.error(frame + ': ' + msg);
+      if (adviceFix)
+        socket.emit('requestFrame');
+    }
+  }.bind(this, frame));
+  */
+  
+  dirty = true;
+  requestAnimationFrame(function() {
+    paintLoop();
+  });
+  timeout = setTimeout(function() {
+    console.warn('Server has timed-out. Disconnecting.');
+    socket.disconnect();
+  }, 3000);
+}
+
+function paintLoop()
+{
+  if (!dirty)
+    return;
+  invokeRenderer('paint', []);
+  dirty = false;
+  
+  if (user && user.dead)
+  {
+    if (timeout)
+      clearTimeout(timeout);
+    if (deadFrames === 60) //One second of frame
+    {
+      var before =allowAnimation;
+      allowAnimation = false;
+      update();
+      invokeRenderer('paint', []);
+      allowAnimation = before;
+      user = null;
+      deadFrames = 0;
+      return;
+    }
+    
+    socket.disconnect();
+    deadFrames++;
+    dirty = true;
+    update();
+    requestAnimationFrame(paintLoop);
+  }
+}
+
+function reset() {
+  user = null;
+  
+  grid.reset();
+  players = [];
+  allPlayers = [];
+  kills = 0;
+  
+  invokeRenderer('reset');
+}
+
+function setUser(player) {
+  user = player;
+  invokeRenderer('setUser', [player]);
+}
+
+function update() {
+  var dead = [];
+  core.updateFrame(grid, players, dead, function addKill(killer, other)
+  {
+    if (players[killer] === user && killer !== other)
+      kills++;
+  });
+  dead.forEach(function(val) {
+    console.log((val.name || 'Unnamed') + ' is dead');
+    delete allPlayers[val.num];
+    invokeRenderer('removePlayer', [val]);
+  });
+  
+  invokeRenderer('update', [frame]);
+}
+
+//Export stuff
+var funcs = [connectGame, changeHeading, getPlayers];
+funcs.forEach(function (f) {
+  exports[f.name] = f;
+});
+
+exports.renderer = null;
+Object.defineProperties(exports, {
+  allowAnimation: {
+    get: function() { return allowAnimation; },
+    set: function(val) { allowAnimation = !!val; },
+    enumerable: true
+  },
+  grid: {
+    get: function() { return grid; },
+    enumerable: true
+  },
+  kills: {
+    get: function() { return kills; },
+    enumerable: true
+  }
+});
+
+},{"./game-core":9,"socket.io-client":44}],4:[function(require,module,exports){
+/* global $ */
+var client = require("./client");
+var core = require("./game-core");
+var io = require('socket.io-client');
+
+var GRID_SIZE = core.GRID_SIZE;
+var CELL_WIDTH = core.CELL_WIDTH;
+
+client.allowAnimation = true;
+client.renderer = require("./client-modes/user-mode");
+  
+/**
+ * Provides requestAnimationFrame in a cross browser way. (edited so that this is also compatible with node.)
+ * @author paulirish / http://paulirish.com/
+ */
+// window.requestAnimationFrame = function( /* function FrameRequestCallback */ callback, /* DOMElement Element */ element ) {
+//       window.setTimeout( callback, 1000 / 60 );
+//     };
+var hasWindow;
+try {
+  window.document;
+  hasWindow = true;
+} catch (e) {
+  hasWindow = false;
+}
+
+var requestAnimationFrame;
+if ( !requestAnimationFrame ) {
+  requestAnimationFrame = ( function() {
+    if (hasWindow) {
+      return window.requestAnimationFrame ||
+      window.webkitRequestAnimationFrame ||
+      window.mozRequestAnimationFrame ||
+      window.oRequestAnimationFrame ||
+      window.msRequestAnimationFrame ||
+      function( /* function FrameRequestCallback */ callback, /* DOMElement Element */ element ) {
+        setTimeout( callback, 1000 / 60 );
+      };
+    } else {
+      return function( /* function FrameRequestCallback */ callback, /* DOMElement Element */ element ) {
+        setTimeout( callback, 1000 / 60 );
+      };
+    }
+  })();
+}
+
+function run() {
+  client.connectGame('//' + window.location.hostname + ':8081', $('#name').val(), function(success, msg) {
+    if (success) 
+    {
+      $("#begin").addClass("hidden");
+      $("#begin").animate({
+          opacity: 0
+      }, 1000);
+    }
+    else 
+    {
+      var error = $("#error");
+      error.text(msg);
+    }
+  });
+}
+
+$(function() {
+  var error = $("#error");
+  
+  if (!window.WebSocket)
+  {
+    error.text("Your browser does not support WebSockets!");
+    return;
+  }
+  
+  error.text("Loading..."); //TODO: show loading screen.
+  var success = false;
+  var socket = io('http://' + window.location.hostname + ':8081', {
+    'forceNew': true,
+    upgrade: false,
+    transports: ['websocket']
+  });
+  
+  socket.on('connect_error', function() {
+    if (!success)
+      error.text("Cannot connect with server. This probably is due to misconfigured proxy server. (Try using a different browser)");
+  });
+  socket.emit("checkConn", function() {
+    success = true;
+    socket.disconnect();
+  });
+  setTimeout(function() {
+    if (!success)
+      error.text("Cannot connect with server. This probably is due to misconfigured proxy server. (Try using a different browser)");
+    else
+    {
+      error.text("");
+      $("input").keypress(function(evt) {
+        if (evt.which === 13)
+          requestAnimationFrame(run);
+      });
+      $("button").click(function(evt) {
+        requestAnimationFrame(run);
+      });
+    }
+  }, 2000);
+});
+
+
+//Event listeners
+$(document).keydown(function(e) {
+  var newHeading = -1;
+  switch (e.which)
+  {
+    case 37: newHeading = 3; break; //LEFT
+    case 38: newHeading = 0; break; //UP
+    case 39: newHeading = 1; break; //RIGHT
+    case 40: newHeading = 2; break; //DOWN
+    default: return; //exit handler for other keys.
+  }
+  
+  client.changeHeading(newHeading);
+  e.preventDefault();
+});
+
+},{"./client":3,"./client-modes/user-mode":2,"./game-core":9,"socket.io-client":44}],5:[function(require,module,exports){
+
+
+function Color(h, s, l, a)
+{
+  verifyRange(h, s, l);
+  if (a === undefined) a = 1;
+  else verifyRange(a);
+  
+  Object.defineProperties(this, {
+    "hue": {value: h, enumerable: true},
+    "sat": {value: s, enumerable: true},
+    "lum": {value: l, enumerable: true},
+    "alpha": {value: a, enumerable: true},
+  });
+}
+
+Color.fromData = function(data) {
+  return new Color(data.hue, data.sat, data.lum, data.alpha);
+};
+
+function verifyRange()
+{
+  for (var i = 0; i < arguments.length; i++)
+  {
+    if (arguments[i] < 0 || arguments[i] > 1)
+      throw new RangeError("H, S, L, and A parameters must be between the range [0, 1]");
+  }
+}
+
+Color.prototype.interpolateToString = function(color, amount)
+{
+  var rgbThis = hslToRgb(this.hue, this.sat, this.lum);
+  var rgbThat = hslToRgb(color.hue, color.sat, color.lum);
+  var rgb = [];
+  
+  for (var i = 0; i < 3; i++)
+    rgb[i] = Math.floor((rgbThat[i] - rgbThis[i]) * amount + rgbThis[i]);
+  return {rgbString: function() {return 'rgb(' + rgb[0] + ', ' + rgb[1] + ', ' + rgb[2] + ')'}};
+}
+
+Color.prototype.deriveLumination = function(amount)
+{
+  var lum = this.lum + amount;
+  lum = Math.min(Math.max(lum, 0), 1);
+  return new Color(this.hue, this.sat, lum, this.alpha);
+};
+
+Color.prototype.deriveHue = function(amount)
+{
+  var hue = this.hue - amount;
+  return new Color(hue - Math.floor(hue), this.sat, this.lum, this.alpha);
+};
+
+Color.prototype.deriveSaturation = function(amount)
+{
+  var sat = this.sat + amount;
+  sat = Math.min(Math.max(sat, 0), 1);
+  return new Color(this.hue, sat, this.lum, this.alpha);
+};
+
+Color.prototype.deriveAlpha = function(newAlpha)
+{
+  verifyRange(newAlpha);
+  return new Color(this.hue, this.sat, this.lum, newAlpha);
+};
+
+Color.prototype.rgbString = function() {
+  var rgb = hslToRgb(this.hue, this.sat, this.lum);
+  rgb[3] = this.a;
+  return 'rgba(' + rgb[0] + ', ' + rgb[1] + ', ' + rgb[2] + ', ' + this.alpha + ')';
+};
+
+
+//http://stackoverflow.com/a/9493060/7344257
+function hslToRgb(h, s, l){
+  var r, g, b;
+
+  if(s == 0){
+    r = g = b = l; // achromatic
+  }else{
+    var hue2rgb = function hue2rgb(p, q, t){
+      if(t < 0) t += 1;
+      if(t > 1) t -= 1;
+      if(t < 1/6) return p + (q - p) * 6 * t;
+      if(t < 1/2) return q;
+      if(t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    };
+
+    var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    var p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1/3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1/3);
+  }
+
+  return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+}
+
+module.exports = Color;
+},{}],6:[function(require,module,exports){
+function constant(val) {
+  return {
+    value: val,
+    enumerable: true
+  };
+}
+
+var consts = {
+  GRID_SIZE: constant(80),
+  CELL_WIDTH: constant(40),
+  SPEED: constant(5),
+  BORDER_WIDTH: constant(20),
+  MAX_PLAYERS: constant(81)
+};
+
+Object.defineProperties(module.exports, consts);
+
+},{}],7:[function(require,module,exports){
+var ANIMATE_FRAMES = 24;
+var CELL_WIDTH = 40;
+
+//TODO: remove constants.
+exports.initPlayer = function(grid, player)
+{
+  for (var dr = -1; dr <= 1; dr++)
+    for (var dc = -1; dc <= 1; dc++)
+      if (!grid.isOutOfBounds(dr + player.row, dc + player.col))
+        grid.set(dr + player.row, dc + player.col, player);
+};
+exports.updateFrame = function(grid, players, dead, notifyKill)
+{
+  var adead = [];
+  if (dead instanceof Array)
+    adead = dead;
+  
+  var kill;
+  if (!notifyKill)
+    kill = function() {};
+  else
+    kill = function(killer, other) {if (!removing[other]) notifyKill(killer, other);};
+  
+  //Move players.  
+  var tmp = players.filter(function(val) {
+    val.move();
+    if (val.dead)
+      adead.push(val);
+    return !val.dead;
+  });
+  
+  //Remove players with collisions.
+  var removing = new Array(players.length);
+  for (var i = 0; i < players.length; i++)
+  {
+    for (var j = i; j < players.length; j++)
+    {
+      
+      //Remove those players when other players have hit their tail.
+      if (!removing[j] && players[j].tail.hitsTail(players[i]))
+      {
+        kill(i, j);
+        removing[j] = true;
+        //console.log("TAIL");
+      }
+      if (!removing[i] && players[i].tail.hitsTail(players[j]))
+      {
+        kill(j, i);
+        removing[i] = true;
+        //console.log("TAIL");
+      }
+      
+      //Remove players with collisons...
+      if (i !== j && squaresIntersect(players[i].posX, players[j].posX) &&
+        squaresIntersect(players[i].posY, players[j].posY))
+      {
+        //...if one player is own his own territory, the other is out.
+        if (grid.get(players[i].row, players[i].col) === players[i])
+        {
+          kill(i, j);
+          removing[j] = true;
+        }
+        else if (grid.get(players[j].row, players[j].col) === players[j])
+        {
+          kill(j, i);
+          removing[i] = true;
+        }
+        else
+        {
+          //...otherwise, the one that sustains most of the collision will be removed.
+          var areaI = area(players[i]);
+          var areaJ = area(players[j]);
+          
+          if (areaI === areaJ)
+          {
+            kill(i, j);
+            kill(j, i);
+            removing[i] = removing[j] = true;
+          }
+          else if (areaI > areaJ)
+          {
+            kill(j, i);
+            removing[i] = true;
+          }
+          else
+          {
+            kill(i, j);
+            removing[j] = true;
+          }
+        }
+      }
+    }
+  }
+  
+  tmp = tmp.filter(function(val, i) {
+    if (removing[i])
+    {
+      adead.push(val);
+      val.die();
+    }
+    return !removing[i];
+  });
+  players.length = tmp.length;
+  for (var i = 0; i < tmp.length; i++)
+    players[i] = tmp[i];
+  
+  //Remove dead squares.
+  for (var r = 0; r < grid.size; r++)
+  {
+    for (var c = 0; c < grid.size; c++)
+    {
+      if (adead.indexOf(grid.get(r, c)) !== -1)
+        grid.set(r, c, null);
+    }
+  }
+};
+
+function squaresIntersect(a, b)
+{
+  if (a < b)
+    return b < a + CELL_WIDTH;
+  else
+    return a < b + CELL_WIDTH;
+}
+
+function area(player)
+{
+  var xDest = player.col * CELL_WIDTH;
+  var yDest = player.row * CELL_WIDTH;
+  
+  if (player.posX === xDest)
+    return Math.abs(player.posY - yDest);
+  else
+    return Math.abs(player.posX - xDest);
+}
+},{}],8:[function(require,module,exports){
 function Grid(size, changeCallback)
 {
   var grid = new Array(size);
@@ -885,7 +1285,573 @@ function isOutOfBounds(data, row, col)
 }
 
 module.exports = Grid;
-},{}],7:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
+var core = require('./game-core');
+var consts = require('./game-consts');
+
+exports.Color = require('./color');
+exports.Grid = require('./grid');
+exports.Player = require('./player');
+
+exports.initPlayer = core.initPlayer;
+exports.updateFrame = core.updateFrame;
+
+for (var prop in consts) {
+  Object.defineProperty(exports, prop, {
+    enumerable: true,
+    value: consts[prop]
+  });
+}
+
+
+},{"./color":5,"./game-consts":6,"./game-core":7,"./grid":8,"./player":10}],10:[function(require,module,exports){
+var Stack = require("./stack");
+var Color = require("./color");
+var Grid = require("./grid.js");
+var consts = require("./game-consts.js");
+
+var GRID_SIZE = consts.GRID_SIZE;
+var CELL_WIDTH = consts.CELL_WIDTH;
+var NEW_PLAYER_LAG = 60; //wait for a second at least.
+
+function defineGetter(getter) {
+  return {
+    get: getter,
+    enumerable: true
+  };
+}
+
+function defineInstanceMethods(thisobj, data /*, methods...*/)
+{
+  for (var i = 2; i < arguments.length; i++)
+    thisobj[arguments[i].name] = arguments[i].bind(this, data);
+}
+
+function defineAccessorProperties(thisobj, data /*, names...*/)
+{
+  var descript = {};
+  function getAt(name) { return function() {return data[name] } }
+  for (var i = 2; i < arguments.length; i++)
+    descript[arguments[i]] = defineGetter(getAt(arguments[i]));
+  Object.defineProperties(thisobj, descript);
+}
+
+function TailMove(orientation)
+{
+  this.move = 1;
+  Object.defineProperty(this, "orientation", {
+    value: orientation,
+    enumerable: true
+  });
+}
+
+function Tail(player, sdata)
+{
+  var data = {
+    tail: [],
+    tailGrid: [],
+    prev: null,
+    startRow: 0,
+    startCol: 0,
+    prevRow: 0, 
+    prevCol: 0,
+    player: player
+  };
+  
+  if (sdata)
+  {
+    data.startRow = data.prevRow = sdata.startRow || 0;
+    data.startCol = data.prevCol = sdata.startCol || 0;
+    sdata.tail.forEach(function(val) {
+      addTail(data, val.orientation, val.move);
+    });
+  }
+  data.grid = player.grid;
+  
+  defineInstanceMethods(this, data, addTail, hitsTail, fillTail, renderTail, reposition, serialData);
+  Object.defineProperty(this, "moves", {
+    get: function() {return data.tail.slice(0);},
+    enumerable: true
+  });
+}
+
+//Instance methods.
+function serialData(data) {
+  return {
+    tail: data.tail,
+    startRow: data.startRow,
+    startCol: data.startCol
+  };
+}
+
+function setTailGrid(data, tailGrid, r, c)
+{
+  if (!tailGrid[r])
+    tailGrid[r] = [];
+  tailGrid[r][c] = true;
+}
+
+function addTail(data, orientation, count)
+{
+  if (count === undefined)
+    count = 1;
+  if (!count || count < 0)
+    return;
+  
+  var prev = data.prev;
+  var r = data.prevRow, c = data.prevCol;
+  if (data.tail.length === 0)
+    setTailGrid(data, data.tailGrid, r, c);
+  
+  if (!prev || prev.orientation !== orientation)
+  {
+    prev = data.prev = new TailMove(orientation);
+    data.tail.push(prev);
+    prev.move += count - 1;
+  }
+  else
+    prev.move += count;
+
+  for (var i = 0; i < count; i++)
+  {
+    var pos = walk([data.prevRow, data.prevCol], null, orientation, 1);
+    data.prevRow = pos[0];
+    data.prevCol = pos[1];
+    setTailGrid(data, data.tailGrid, pos[0], pos[1]);
+  }
+  
+}
+
+function reposition(data, row, col)
+{
+  data.prevRow = data.startRow = row;
+  data.prevCol = data.startCol = col;
+  data.prev = null;
+  if (data.tail.length === 0)
+    return;
+  else 
+  {
+    var ret = data.tail;
+    data.tail = [];
+    data.tailGrid = [];
+    return ret;
+  }
+}
+
+/*
+function render2(data, ctx)
+{
+  ctx.fillStyle = data.player.tailColor.rgbString();
+  for (var r = 0; r < data.tailGrid.length; r++)
+  {
+    if (!data.tailGrid[r])
+      continue;
+    for (var c = 0; c < data.tailGrid[r].length; c++)
+      if (data.tailGrid[r][c])
+        ctx.fillRect(c * CELL_WIDTH, r * CELL_WIDTH, CELL_WIDTH, CELL_WIDTH);
+  }
+}
+*/
+
+//Helper methods.
+function renderTail(data, ctx)
+{
+  if (data.tail.length === 0)
+    return;
+  
+  ctx.fillStyle = data.player.tailColor.rgbString();
+  
+  var prevOrient = -1;
+  var start = [data.startRow, data.startCol];
+  
+  //fillTailRect(ctx, start, start);
+  data.tail.forEach(function(tail) {
+    var negDir = tail.orientation === 0 || tail.orientation === 3;
+
+    var back = start;
+    if (!negDir)
+      start = walk(start, null, tail.orientation, 1);
+    var finish = walk(start, null, tail.orientation, tail.move - 1);
+    
+    if (tail.move > 1)
+      fillTailRect(ctx, start, finish);
+    if (prevOrient !== -1)
+      //Draw folding triangle.
+      renderCorner(ctx, back, prevOrient, tail.orientation);
+    
+    start = finish;
+    if (negDir)
+      walk(start, start, tail.orientation, 1);
+    prevOrient = tail.orientation;
+  });
+  
+  var curOrient = data.player.currentHeading;
+  if (prevOrient === curOrient)
+  {
+    fillTailRect(ctx, start, start);
+  }
+  else
+    renderCorner(ctx, start, prevOrient, curOrient);
+}
+
+function renderCorner(ctx, cornerStart, dir1, dir2)
+{
+  if (dir1 === 0 || dir2 === 0)
+    walk(cornerStart, cornerStart, 2, 1);
+  if (dir1 === 3 || dir2 === 3)
+    walk(cornerStart, cornerStart, 1, 1);
+  
+  var a = walk(cornerStart, null, dir2, 1);
+  var b = walk(a, null, dir1, 1);
+  
+  var triangle = new Path2D();
+  triangle.moveTo(cornerStart[1] * CELL_WIDTH, cornerStart[0] * CELL_WIDTH);
+  triangle.lineTo(a[1] * CELL_WIDTH, a[0] * CELL_WIDTH);
+  triangle.lineTo(b[1] * CELL_WIDTH, b[0] * CELL_WIDTH);
+  triangle.closePath();
+  for (var i = 0; i < 2; i++)
+    ctx.fill(triangle);
+}
+
+function walk(from, ret, orient, dist)
+{
+  ret = ret || [];
+  ret[0] = from[0];
+  ret[1] = from[1];
+  switch (orient)
+  {
+    case 0: ret[0] -= dist; break; //UP
+    case 1: ret[1] += dist; break; //RIGHT
+    case 2: ret[0] += dist; break; //DOWN
+    case 3: ret[1] -= dist; break; //LEFT
+  }
+  return ret;
+}
+
+function fillTailRect(ctx, start, end)
+{
+  var x = start[1] * CELL_WIDTH;
+  var y = start[0] * CELL_WIDTH;
+  var width = (end[1] - start[1]) * CELL_WIDTH;
+  var height = (end[0] - start[0]) * CELL_WIDTH;
+  
+  if (width === 0)
+    width += CELL_WIDTH;
+  if (height === 0)
+    height += CELL_WIDTH;
+  
+  if (width < 0)
+  {
+    x += width;
+    width = -width;
+  }
+  if (height < 0)
+  {
+    y += height;
+    height = -height;
+  }
+  ctx.fillRect(x, y, width, height);
+}
+
+function fillTail(data)
+{
+  if (data.tail.length === 0)
+    return;
+  
+  function onTail(c) { return data.tailGrid[c[0]] && data.tailGrid[c[0]][c[1]]; }
+  
+  var grid = data.grid;
+  var start = [data.startRow, data.startCol];
+  var been = new Grid(grid.size);
+  var coords = [];
+  
+  coords.push(start);
+  while (coords.length > 0) //BFS for all tail spaces.
+  {
+    var coord = coords.shift();
+    var r = coord[0];
+    var c = coord[1];
+    
+    if (grid.isOutOfBounds(r, c))
+      continue;
+    
+    if (been.get(r, c))
+      continue;
+    
+    if (onTail(coord)) //on the tail.
+    {
+      been.set(r, c, true);
+      grid.set(r, c, data.player);
+      
+      //Find all spots that this tail encloses.
+      floodFill(data, grid, r + 1, c, been);
+      floodFill(data, grid, r - 1, c, been);
+      floodFill(data, grid, r, c + 1, been);
+      floodFill(data, grid, r, c - 1, been);
+      
+      coords.push([r + 1, c]);
+      coords.push([r - 1, c]);
+      coords.push([r, c + 1]);
+      coords.push([r, c - 1]);
+    }
+  }
+}
+
+function floodFill(data, grid, row, col, been)
+{
+  function onTail(c) { return data.tailGrid[c[0]] && data.tailGrid[c[0]][c[1]]; }
+  
+  var start = [row, col];
+  if (grid.isOutOfBounds(row, col) || been.get(row, col) || onTail(start) || grid.get(row, col) === data.player)
+      return; //Avoid allocating too many resources.
+  
+  var coords = [];
+  var filled = new Stack(GRID_SIZE * GRID_SIZE + 1);
+  var surrounded = true;
+  
+  coords.push(start);
+  while (coords.length > 0)
+  {
+    var coord = coords.shift();
+    var r = coord[0];
+    var c = coord[1];
+    
+    if (grid.isOutOfBounds(r, c))
+    {
+      surrounded = false;
+      continue;
+    }
+    
+    //End this traverse on boundaries (where we been, on the tail, and when we enter our territory)
+    if (been.get(r, c) || onTail(coord) || grid.get(r, c) === data.player)
+      continue;
+      
+    been.set(r, c, true);
+    
+    if (surrounded)
+      filled.push(coord);
+    
+    coords.push([r + 1, c]);
+    coords.push([r - 1, c]);
+    coords.push([r, c + 1]);
+    coords.push([r, c - 1]);
+  }
+  if (surrounded)
+  {
+    while (!filled.isEmpty())
+    {
+      coord = filled.pop();
+      grid.set(coord[0], coord[1], data.player);
+    }
+  }
+  
+  return surrounded;
+}
+
+function hitsTail(data, other)
+{
+  return (data.prevRow !== other.row || data.prevCol !== other.col) &&
+        (data.startRow !== other.row || data.startCol !== other.col) && 
+    !!(data.tailGrid[other.row] && data.tailGrid[other.row][other.col]);
+}
+
+var SPEED = 5;
+var SHADOW_OFFSET = 10;
+
+function Player(grid, sdata) {
+  var data = {};
+  
+  //Parameters
+  data.num = sdata.num;
+  data.name = sdata.name || ""; //|| "Player " + (data.num + 1);
+  data.grid = grid;
+  data.posX = sdata.posX;
+  data.posY = sdata.posY;
+  this.heading = data.currentHeading = sdata.currentHeading; //0 is up, 1 is right, 2 is down, 3 is left.
+  data.waitLag = sdata.waitLag || 0;
+  data.dead = false;
+  
+  //Only need colors for client side.
+  var base;
+  if (sdata.base)
+    base = this.baseColor = sdata.base instanceof Color ? sdata.base : Color.fromData(sdata.base);
+  else
+  {
+    var hue = Math.random();
+    this.baseColor = base = new Color(hue, .8, .5);
+  }
+  this.lightBaseColor = base.deriveLumination(.1);
+  this.shadowColor = base.deriveLumination(-.3);
+  this.tailColor = base.deriveLumination(.3).deriveAlpha(.5);
+  
+  //Tail requires special handling.
+  this.grid = grid; //Temporary
+  if (sdata.tail) 
+    data.tail = new Tail(this, sdata.tail);
+  else 
+  {
+    data.tail = new Tail(this);
+    data.tail.reposition(calcRow(data), calcCol(data));
+  }
+  
+  //Instance methods.
+  this.move = move.bind(this, data);
+  this.die = function() { data.dead = true;};
+  this.serialData = function() {
+    return {
+      base: this.baseColor,
+      num: data.num,
+      name: data.name,
+      posX: data.posX,
+      posY: data.posY,
+      currentHeading: data.currentHeading,
+      tail: data.tail.serialData(),
+      waitLag: data.waitLag
+    };
+  };
+  
+  //Read-only Properties.
+  defineAccessorProperties(this, data, "currentHeading", "dead", "name", "num", "posX", "posY", "grid", "tail", "waitLag");
+  Object.defineProperties(this, {
+    row: defineGetter(function() { return calcRow(data); }),
+    col: defineGetter(function() { return calcCol(data); })
+  });
+}
+
+//Gets the next integer in positive or negative direction.
+function nearestInteger(positive, val)
+{
+  return positive ? Math.ceil(val) : Math.floor(val);
+}
+
+function calcRow(data)
+{
+  return nearestInteger(data.currentHeading === 2 /*DOWN*/, data.posY / CELL_WIDTH);
+}
+
+function calcCol(data)
+{
+  return nearestInteger(data.currentHeading === 1 /*RIGHT*/, data.posX / CELL_WIDTH);
+}
+
+//Instance methods
+Player.prototype.render = function(ctx, fade)
+{
+  //Render tail.
+  this.tail.renderTail(ctx);
+  
+  //Render player.
+  fade = fade || 1;
+  ctx.fillStyle = this.shadowColor.deriveAlpha(fade).rgbString();
+  ctx.fillRect(this.posX, this.posY, CELL_WIDTH, CELL_WIDTH);
+  
+  var mid = CELL_WIDTH / 2;
+  var grd = ctx.createRadialGradient(this.posX + mid, this.posY + mid - SHADOW_OFFSET, 1,
+            this.posX + mid, this.posY + mid - SHADOW_OFFSET, CELL_WIDTH);
+  grd.addColorStop(0, this.baseColor.deriveAlpha(fade).rgbString());
+  grd.addColorStop(1, new Color(0, 0, 1, fade).rgbString());
+  ctx.fillStyle = grd;
+  ctx.fillRect(this.posX - 1, this.posY - SHADOW_OFFSET, CELL_WIDTH + 2, CELL_WIDTH);
+  
+  //Render name
+  ctx.fillStyle = this.shadowColor.deriveAlpha(fade).rgbString();
+  ctx.textAlign = "center";
+  
+  var yoff = -SHADOW_OFFSET * 2;
+  if (this.row === 0)
+    yoff = SHADOW_OFFSET * 2 + CELL_WIDTH;
+  ctx.font = "18px Changa";
+  ctx.fillText(this.name, this.posX + CELL_WIDTH / 2, this.posY + yoff);
+};
+
+
+function move(data)
+{
+  if (data.waitLag < NEW_PLAYER_LAG)
+  {
+    data.waitLag++;
+    return;
+  }
+  
+  //Move to new position.
+  var heading = this.heading;
+  if (this.posX % CELL_WIDTH !== 0 || this.posY % CELL_WIDTH !== 0)
+    heading = data.currentHeading;
+  else 
+    data.currentHeading = heading;
+  switch (heading)
+  {
+    case 0: data.posY -= SPEED; break; //UP
+    case 1: data.posX += SPEED; break; //RIGHT
+    case 2: data.posY += SPEED; break; //DOWN
+    case 3: data.posX -= SPEED; break; //LEFT
+  }
+  
+  //Check for out of bounds.
+  var row = this.row, col = this.col;
+  if (data.grid.isOutOfBounds(row, col))
+  {
+    data.dead = true;
+    return;
+  }
+  
+  //Update tail position.
+  if (data.grid.get(row, col) === this)
+  {
+    //Safe zone!
+    this.tail.fillTail();
+    this.tail.reposition(row, col);
+  }
+  //If we are completely in a new cell (not in our safe zone), we add to the tail.
+  else if (this.posX % CELL_WIDTH === 0 && this.posY % CELL_WIDTH === 0)
+    this.tail.addTail(heading);
+}
+
+module.exports = Player;
+
+},{"./color":5,"./game-consts.js":6,"./grid.js":8,"./stack":11}],11:[function(require,module,exports){
+
+
+function Stack(initSize)
+{
+  var len = 0;
+  var arr = [];
+  
+  this.ensureCapacity = function(size)
+  {
+    arr.length = Math.max(arr.length, size || 0);
+  };
+  
+  this.push = function(ele)
+  {
+    this[len] = ele;
+    len++;
+  };
+  
+  this.pop = function()
+  {
+    if (len === 0)
+      return;
+    len--;
+    var tmp = this[len];
+    this[len] = undefined;
+    return tmp;
+  };
+  
+  this.isEmpty = function() {
+    return len === 0;
+  }
+  
+  this.ensureCapacity(initSize);
+  
+  
+  Object.defineProperty(this, "length", {
+    get: function() {return len;}
+  });
+}
+
+module.exports = Stack;
+},{}],12:[function(require,module,exports){
 module.exports = after
 
 function after(count, callback, err_cb) {
@@ -915,7 +1881,7 @@ function after(count, callback, err_cb) {
 
 function noop() {}
 
-},{}],8:[function(require,module,exports){
+},{}],13:[function(require,module,exports){
 /**
  * An abstraction for slicing an arraybuffer even when
  * ArrayBuffer.prototype.slice is not supported
@@ -946,7 +1912,7 @@ module.exports = function(arraybuffer, start, end) {
   return result.buffer;
 };
 
-},{}],9:[function(require,module,exports){
+},{}],14:[function(require,module,exports){
 
 /**
  * Expose `Backoff`.
@@ -1033,7 +1999,7 @@ Backoff.prototype.setJitter = function(jitter){
 };
 
 
-},{}],10:[function(require,module,exports){
+},{}],15:[function(require,module,exports){
 /*
  * base64-arraybuffer
  * https://github.com/niklasvh/base64-arraybuffer
@@ -1102,7 +2068,7 @@ Backoff.prototype.setJitter = function(jitter){
   };
 })();
 
-},{}],11:[function(require,module,exports){
+},{}],16:[function(require,module,exports){
 (function (global){
 /**
  * Create a blob builder even when vendor prefixes exist
@@ -1202,7 +2168,7 @@ module.exports = (function() {
 })();
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],12:[function(require,module,exports){
+},{}],17:[function(require,module,exports){
 /**
  * Slice reference.
  */
@@ -1227,7 +2193,7 @@ module.exports = function(obj, fn){
   }
 };
 
-},{}],13:[function(require,module,exports){
+},{}],18:[function(require,module,exports){
 
 /**
  * Expose `Emitter`.
@@ -1393,7 +2359,7 @@ Emitter.prototype.hasListeners = function(event){
   return !! this.listeners(event).length;
 };
 
-},{}],14:[function(require,module,exports){
+},{}],19:[function(require,module,exports){
 
 module.exports = function(a, b){
   var fn = function(){};
@@ -1401,507 +2367,11 @@ module.exports = function(a, b){
   a.prototype = new fn;
   a.prototype.constructor = a;
 };
-},{}],15:[function(require,module,exports){
-
-/**
- * This is the web browser implementation of `debug()`.
- *
- * Expose `debug()` as the module.
- */
-
-exports = module.exports = require('./debug');
-exports.log = log;
-exports.formatArgs = formatArgs;
-exports.save = save;
-exports.load = load;
-exports.useColors = useColors;
-exports.storage = 'undefined' != typeof chrome
-               && 'undefined' != typeof chrome.storage
-                  ? chrome.storage.local
-                  : localstorage();
-
-/**
- * Colors.
- */
-
-exports.colors = [
-  'lightseagreen',
-  'forestgreen',
-  'goldenrod',
-  'dodgerblue',
-  'darkorchid',
-  'crimson'
-];
-
-/**
- * Currently only WebKit-based Web Inspectors, Firefox >= v31,
- * and the Firebug extension (any Firefox version) are known
- * to support "%c" CSS customizations.
- *
- * TODO: add a `localStorage` variable to explicitly enable/disable colors
- */
-
-function useColors() {
-  // is webkit? http://stackoverflow.com/a/16459606/376773
-  return ('WebkitAppearance' in document.documentElement.style) ||
-    // is firebug? http://stackoverflow.com/a/398120/376773
-    (window.console && (console.firebug || (console.exception && console.table))) ||
-    // is firefox >= v31?
-    // https://developer.mozilla.org/en-US/docs/Tools/Web_Console#Styling_messages
-    (navigator.userAgent.toLowerCase().match(/firefox\/(\d+)/) && parseInt(RegExp.$1, 10) >= 31);
-}
-
-/**
- * Map %j to `JSON.stringify()`, since no Web Inspectors do that by default.
- */
-
-exports.formatters.j = function(v) {
-  return JSON.stringify(v);
-};
-
-
-/**
- * Colorize log arguments if enabled.
- *
- * @api public
- */
-
-function formatArgs() {
-  var args = arguments;
-  var useColors = this.useColors;
-
-  args[0] = (useColors ? '%c' : '')
-    + this.namespace
-    + (useColors ? ' %c' : ' ')
-    + args[0]
-    + (useColors ? '%c ' : ' ')
-    + '+' + exports.humanize(this.diff);
-
-  if (!useColors) return args;
-
-  var c = 'color: ' + this.color;
-  args = [args[0], c, 'color: inherit'].concat(Array.prototype.slice.call(args, 1));
-
-  // the final "%c" is somewhat tricky, because there could be other
-  // arguments passed either before or after the %c, so we need to
-  // figure out the correct index to insert the CSS into
-  var index = 0;
-  var lastC = 0;
-  args[0].replace(/%[a-z%]/g, function(match) {
-    if ('%%' === match) return;
-    index++;
-    if ('%c' === match) {
-      // we only are interested in the *last* %c
-      // (the user may have provided their own)
-      lastC = index;
-    }
-  });
-
-  args.splice(lastC, 0, c);
-  return args;
-}
-
-/**
- * Invokes `console.log()` when available.
- * No-op when `console.log` is not a "function".
- *
- * @api public
- */
-
-function log() {
-  // this hackery is required for IE8/9, where
-  // the `console.log` function doesn't have 'apply'
-  return 'object' === typeof console
-    && console.log
-    && Function.prototype.apply.call(console.log, console, arguments);
-}
-
-/**
- * Save `namespaces`.
- *
- * @param {String} namespaces
- * @api private
- */
-
-function save(namespaces) {
-  try {
-    if (null == namespaces) {
-      exports.storage.removeItem('debug');
-    } else {
-      exports.storage.debug = namespaces;
-    }
-  } catch(e) {}
-}
-
-/**
- * Load `namespaces`.
- *
- * @return {String} returns the previously persisted debug modes
- * @api private
- */
-
-function load() {
-  var r;
-  try {
-    r = exports.storage.debug;
-  } catch(e) {}
-  return r;
-}
-
-/**
- * Enable namespaces listed in `localStorage.debug` initially.
- */
-
-exports.enable(load());
-
-/**
- * Localstorage attempts to return the localstorage.
- *
- * This is necessary because safari throws
- * when a user disables cookies/localstorage
- * and you attempt to access it.
- *
- * @return {LocalStorage}
- * @api private
- */
-
-function localstorage(){
-  try {
-    return window.localStorage;
-  } catch (e) {}
-}
-
-},{"./debug":16}],16:[function(require,module,exports){
-
-/**
- * This is the common logic for both the Node.js and web browser
- * implementations of `debug()`.
- *
- * Expose `debug()` as the module.
- */
-
-exports = module.exports = debug;
-exports.coerce = coerce;
-exports.disable = disable;
-exports.enable = enable;
-exports.enabled = enabled;
-exports.humanize = require('ms');
-
-/**
- * The currently active debug mode names, and names to skip.
- */
-
-exports.names = [];
-exports.skips = [];
-
-/**
- * Map of special "%n" handling functions, for the debug "format" argument.
- *
- * Valid key names are a single, lowercased letter, i.e. "n".
- */
-
-exports.formatters = {};
-
-/**
- * Previously assigned color.
- */
-
-var prevColor = 0;
-
-/**
- * Previous log timestamp.
- */
-
-var prevTime;
-
-/**
- * Select a color.
- *
- * @return {Number}
- * @api private
- */
-
-function selectColor() {
-  return exports.colors[prevColor++ % exports.colors.length];
-}
-
-/**
- * Create a debugger with the given `namespace`.
- *
- * @param {String} namespace
- * @return {Function}
- * @api public
- */
-
-function debug(namespace) {
-
-  // define the `disabled` version
-  function disabled() {
-  }
-  disabled.enabled = false;
-
-  // define the `enabled` version
-  function enabled() {
-
-    var self = enabled;
-
-    // set `diff` timestamp
-    var curr = +new Date();
-    var ms = curr - (prevTime || curr);
-    self.diff = ms;
-    self.prev = prevTime;
-    self.curr = curr;
-    prevTime = curr;
-
-    // add the `color` if not set
-    if (null == self.useColors) self.useColors = exports.useColors();
-    if (null == self.color && self.useColors) self.color = selectColor();
-
-    var args = Array.prototype.slice.call(arguments);
-
-    args[0] = exports.coerce(args[0]);
-
-    if ('string' !== typeof args[0]) {
-      // anything else let's inspect with %o
-      args = ['%o'].concat(args);
-    }
-
-    // apply any `formatters` transformations
-    var index = 0;
-    args[0] = args[0].replace(/%([a-z%])/g, function(match, format) {
-      // if we encounter an escaped % then don't increase the array index
-      if (match === '%%') return match;
-      index++;
-      var formatter = exports.formatters[format];
-      if ('function' === typeof formatter) {
-        var val = args[index];
-        match = formatter.call(self, val);
-
-        // now we need to remove `args[index]` since it's inlined in the `format`
-        args.splice(index, 1);
-        index--;
-      }
-      return match;
-    });
-
-    if ('function' === typeof exports.formatArgs) {
-      args = exports.formatArgs.apply(self, args);
-    }
-    var logFn = enabled.log || exports.log || console.log.bind(console);
-    logFn.apply(self, args);
-  }
-  enabled.enabled = true;
-
-  var fn = exports.enabled(namespace) ? enabled : disabled;
-
-  fn.namespace = namespace;
-
-  return fn;
-}
-
-/**
- * Enables a debug mode by namespaces. This can include modes
- * separated by a colon and wildcards.
- *
- * @param {String} namespaces
- * @api public
- */
-
-function enable(namespaces) {
-  exports.save(namespaces);
-
-  var split = (namespaces || '').split(/[\s,]+/);
-  var len = split.length;
-
-  for (var i = 0; i < len; i++) {
-    if (!split[i]) continue; // ignore empty strings
-    namespaces = split[i].replace(/\*/g, '.*?');
-    if (namespaces[0] === '-') {
-      exports.skips.push(new RegExp('^' + namespaces.substr(1) + '$'));
-    } else {
-      exports.names.push(new RegExp('^' + namespaces + '$'));
-    }
-  }
-}
-
-/**
- * Disable debug output.
- *
- * @api public
- */
-
-function disable() {
-  exports.enable('');
-}
-
-/**
- * Returns true if the given mode name is enabled, false otherwise.
- *
- * @param {String} name
- * @return {Boolean}
- * @api public
- */
-
-function enabled(name) {
-  var i, len;
-  for (i = 0, len = exports.skips.length; i < len; i++) {
-    if (exports.skips[i].test(name)) {
-      return false;
-    }
-  }
-  for (i = 0, len = exports.names.length; i < len; i++) {
-    if (exports.names[i].test(name)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Coerce `val`.
- *
- * @param {Mixed} val
- * @return {Mixed}
- * @api private
- */
-
-function coerce(val) {
-  if (val instanceof Error) return val.stack || val.message;
-  return val;
-}
-
-},{"ms":17}],17:[function(require,module,exports){
-/**
- * Helpers.
- */
-
-var s = 1000;
-var m = s * 60;
-var h = m * 60;
-var d = h * 24;
-var y = d * 365.25;
-
-/**
- * Parse or format the given `val`.
- *
- * Options:
- *
- *  - `long` verbose formatting [false]
- *
- * @param {String|Number} val
- * @param {Object} options
- * @return {String|Number}
- * @api public
- */
-
-module.exports = function(val, options){
-  options = options || {};
-  if ('string' == typeof val) return parse(val);
-  return options.long
-    ? long(val)
-    : short(val);
-};
-
-/**
- * Parse the given `str` and return milliseconds.
- *
- * @param {String} str
- * @return {Number}
- * @api private
- */
-
-function parse(str) {
-  str = '' + str;
-  if (str.length > 10000) return;
-  var match = /^((?:\d+)?\.?\d+) *(milliseconds?|msecs?|ms|seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d|years?|yrs?|y)?$/i.exec(str);
-  if (!match) return;
-  var n = parseFloat(match[1]);
-  var type = (match[2] || 'ms').toLowerCase();
-  switch (type) {
-    case 'years':
-    case 'year':
-    case 'yrs':
-    case 'yr':
-    case 'y':
-      return n * y;
-    case 'days':
-    case 'day':
-    case 'd':
-      return n * d;
-    case 'hours':
-    case 'hour':
-    case 'hrs':
-    case 'hr':
-    case 'h':
-      return n * h;
-    case 'minutes':
-    case 'minute':
-    case 'mins':
-    case 'min':
-    case 'm':
-      return n * m;
-    case 'seconds':
-    case 'second':
-    case 'secs':
-    case 'sec':
-    case 's':
-      return n * s;
-    case 'milliseconds':
-    case 'millisecond':
-    case 'msecs':
-    case 'msec':
-    case 'ms':
-      return n;
-  }
-}
-
-/**
- * Short format for `ms`.
- *
- * @param {Number} ms
- * @return {String}
- * @api private
- */
-
-function short(ms) {
-  if (ms >= d) return Math.round(ms / d) + 'd';
-  if (ms >= h) return Math.round(ms / h) + 'h';
-  if (ms >= m) return Math.round(ms / m) + 'm';
-  if (ms >= s) return Math.round(ms / s) + 's';
-  return ms + 'ms';
-}
-
-/**
- * Long format for `ms`.
- *
- * @param {Number} ms
- * @return {String}
- * @api private
- */
-
-function long(ms) {
-  return plural(ms, d, 'day')
-    || plural(ms, h, 'hour')
-    || plural(ms, m, 'minute')
-    || plural(ms, s, 'second')
-    || ms + ' ms';
-}
-
-/**
- * Pluralization helper.
- */
-
-function plural(ms, n, name) {
-  if (ms < n) return;
-  if (ms < n * 1.5) return Math.floor(ms / n) + ' ' + name;
-  return Math.ceil(ms / n) + ' ' + name + 's';
-}
-
-},{}],18:[function(require,module,exports){
+},{}],20:[function(require,module,exports){
 
 module.exports = require('./lib/index');
 
-},{"./lib/index":19}],19:[function(require,module,exports){
+},{"./lib/index":21}],21:[function(require,module,exports){
 
 module.exports = require('./socket');
 
@@ -1913,7 +2383,7 @@ module.exports = require('./socket');
  */
 module.exports.parser = require('engine.io-parser');
 
-},{"./socket":20,"engine.io-parser":31}],20:[function(require,module,exports){
+},{"./socket":22,"engine.io-parser":34}],22:[function(require,module,exports){
 (function (global){
 /**
  * Module dependencies.
@@ -2655,7 +3125,7 @@ Socket.prototype.filterUpgrades = function (upgrades) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./transport":21,"./transports/index":22,"component-emitter":28,"debug":29,"engine.io-parser":31,"indexof":35,"parsejson":39,"parseqs":40,"parseuri":41}],21:[function(require,module,exports){
+},{"./transport":23,"./transports/index":24,"component-emitter":30,"debug":31,"engine.io-parser":34,"indexof":38,"parsejson":41,"parseqs":42,"parseuri":43}],23:[function(require,module,exports){
 /**
  * Module dependencies.
  */
@@ -2814,7 +3284,7 @@ Transport.prototype.onClose = function () {
   this.emit('close');
 };
 
-},{"component-emitter":28,"engine.io-parser":31}],22:[function(require,module,exports){
+},{"component-emitter":30,"engine.io-parser":34}],24:[function(require,module,exports){
 (function (global){
 /**
  * Module dependencies
@@ -2871,7 +3341,7 @@ function polling (opts) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./polling-jsonp":23,"./polling-xhr":24,"./websocket":26,"xmlhttprequest-ssl":27}],23:[function(require,module,exports){
+},{"./polling-jsonp":25,"./polling-xhr":26,"./websocket":28,"xmlhttprequest-ssl":29}],25:[function(require,module,exports){
 (function (global){
 
 /**
@@ -3106,7 +3576,7 @@ JSONPPolling.prototype.doWrite = function (data, fn) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./polling":25,"component-inherit":14}],24:[function(require,module,exports){
+},{"./polling":27,"component-inherit":19}],26:[function(require,module,exports){
 (function (global){
 /**
  * Module requirements.
@@ -3534,7 +4004,7 @@ function unloadHandler () {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./polling":25,"component-emitter":28,"component-inherit":14,"debug":29,"xmlhttprequest-ssl":27}],25:[function(require,module,exports){
+},{"./polling":27,"component-emitter":30,"component-inherit":19,"debug":31,"xmlhttprequest-ssl":29}],27:[function(require,module,exports){
 /**
  * Module dependencies.
  */
@@ -3781,7 +4251,7 @@ Polling.prototype.uri = function () {
   return schema + '://' + (ipv6 ? '[' + this.hostname + ']' : this.hostname) + port + this.path + query;
 };
 
-},{"../transport":21,"component-inherit":14,"debug":29,"engine.io-parser":31,"parseqs":40,"xmlhttprequest-ssl":27,"yeast":55}],26:[function(require,module,exports){
+},{"../transport":23,"component-inherit":19,"debug":31,"engine.io-parser":34,"parseqs":42,"xmlhttprequest-ssl":29,"yeast":61}],28:[function(require,module,exports){
 (function (global){
 /**
  * Module dependencies.
@@ -4070,7 +4540,7 @@ WS.prototype.check = function () {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../transport":21,"component-inherit":14,"debug":29,"engine.io-parser":31,"parseqs":40,"ws":60,"yeast":55}],27:[function(require,module,exports){
+},{"../transport":23,"component-inherit":19,"debug":31,"engine.io-parser":34,"parseqs":42,"ws":62,"yeast":61}],29:[function(require,module,exports){
 (function (global){
 // browser shim for xmlhttprequest module
 
@@ -4111,7 +4581,7 @@ module.exports = function (opts) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"has-cors":34}],28:[function(require,module,exports){
+},{"has-cors":37}],30:[function(require,module,exports){
 
 /**
  * Expose `Emitter`.
@@ -4276,7 +4746,7 @@ Emitter.prototype.hasListeners = function(event){
   return !! this.listeners(event).length;
 };
 
-},{}],29:[function(require,module,exports){
+},{}],31:[function(require,module,exports){
 (function (process){
 
 /**
@@ -4457,7 +4927,7 @@ function localstorage(){
 }
 
 }).call(this,require('_process'))
-},{"./debug":30,"_process":61}],30:[function(require,module,exports){
+},{"./debug":32,"_process":63}],32:[function(require,module,exports){
 
 /**
  * This is the common logic for both the Node.js and web browser
@@ -4659,7 +5129,158 @@ function coerce(val) {
   return val;
 }
 
-},{"ms":38}],31:[function(require,module,exports){
+},{"ms":33}],33:[function(require,module,exports){
+/**
+ * Helpers.
+ */
+
+var s = 1000
+var m = s * 60
+var h = m * 60
+var d = h * 24
+var y = d * 365.25
+
+/**
+ * Parse or format the given `val`.
+ *
+ * Options:
+ *
+ *  - `long` verbose formatting [false]
+ *
+ * @param {String|Number} val
+ * @param {Object} options
+ * @throws {Error} throw an error if val is not a non-empty string or a number
+ * @return {String|Number}
+ * @api public
+ */
+
+module.exports = function (val, options) {
+  options = options || {}
+  var type = typeof val
+  if (type === 'string' && val.length > 0) {
+    return parse(val)
+  } else if (type === 'number' && isNaN(val) === false) {
+    return options.long ?
+			fmtLong(val) :
+			fmtShort(val)
+  }
+  throw new Error('val is not a non-empty string or a valid number. val=' + JSON.stringify(val))
+}
+
+/**
+ * Parse the given `str` and return milliseconds.
+ *
+ * @param {String} str
+ * @return {Number}
+ * @api private
+ */
+
+function parse(str) {
+  str = String(str)
+  if (str.length > 10000) {
+    return
+  }
+  var match = /^((?:\d+)?\.?\d+) *(milliseconds?|msecs?|ms|seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d|years?|yrs?|y)?$/i.exec(str)
+  if (!match) {
+    return
+  }
+  var n = parseFloat(match[1])
+  var type = (match[2] || 'ms').toLowerCase()
+  switch (type) {
+    case 'years':
+    case 'year':
+    case 'yrs':
+    case 'yr':
+    case 'y':
+      return n * y
+    case 'days':
+    case 'day':
+    case 'd':
+      return n * d
+    case 'hours':
+    case 'hour':
+    case 'hrs':
+    case 'hr':
+    case 'h':
+      return n * h
+    case 'minutes':
+    case 'minute':
+    case 'mins':
+    case 'min':
+    case 'm':
+      return n * m
+    case 'seconds':
+    case 'second':
+    case 'secs':
+    case 'sec':
+    case 's':
+      return n * s
+    case 'milliseconds':
+    case 'millisecond':
+    case 'msecs':
+    case 'msec':
+    case 'ms':
+      return n
+    default:
+      return undefined
+  }
+}
+
+/**
+ * Short format for `ms`.
+ *
+ * @param {Number} ms
+ * @return {String}
+ * @api private
+ */
+
+function fmtShort(ms) {
+  if (ms >= d) {
+    return Math.round(ms / d) + 'd'
+  }
+  if (ms >= h) {
+    return Math.round(ms / h) + 'h'
+  }
+  if (ms >= m) {
+    return Math.round(ms / m) + 'm'
+  }
+  if (ms >= s) {
+    return Math.round(ms / s) + 's'
+  }
+  return ms + 'ms'
+}
+
+/**
+ * Long format for `ms`.
+ *
+ * @param {Number} ms
+ * @return {String}
+ * @api private
+ */
+
+function fmtLong(ms) {
+  return plural(ms, d, 'day') ||
+    plural(ms, h, 'hour') ||
+    plural(ms, m, 'minute') ||
+    plural(ms, s, 'second') ||
+    ms + ' ms'
+}
+
+/**
+ * Pluralization helper.
+ */
+
+function plural(ms, n, name) {
+  if (ms < n) {
+    return
+  }
+  if (ms < n * 1.5) {
+    return Math.floor(ms / n) + ' ' + name
+  }
+  return Math.ceil(ms / n) + ' ' + name + 's'
+}
+
+},{}],34:[function(require,module,exports){
 (function (global){
 /**
  * Module dependencies.
@@ -5272,7 +5893,7 @@ exports.decodePayloadAsBinary = function (data, binaryType, callback) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./keys":32,"after":7,"arraybuffer.slice":8,"base64-arraybuffer":10,"blob":11,"has-binary":33,"wtf-8":54}],32:[function(require,module,exports){
+},{"./keys":35,"after":12,"arraybuffer.slice":13,"base64-arraybuffer":15,"blob":16,"has-binary":36,"wtf-8":60}],35:[function(require,module,exports){
 
 /**
  * Gets the keys for an object.
@@ -5293,7 +5914,7 @@ module.exports = Object.keys || function keys (obj){
   return arr;
 };
 
-},{}],33:[function(require,module,exports){
+},{}],36:[function(require,module,exports){
 (function (global){
 
 /*
@@ -5356,7 +5977,7 @@ function hasBinary(data) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"isarray":36}],34:[function(require,module,exports){
+},{"isarray":39}],37:[function(require,module,exports){
 
 /**
  * Module exports.
@@ -5375,7 +5996,7 @@ try {
   module.exports = false;
 }
 
-},{}],35:[function(require,module,exports){
+},{}],38:[function(require,module,exports){
 
 var indexOf = [].indexOf;
 
@@ -5386,12 +6007,12 @@ module.exports = function(arr, obj){
   }
   return -1;
 };
-},{}],36:[function(require,module,exports){
+},{}],39:[function(require,module,exports){
 module.exports = Array.isArray || function (arr) {
   return Object.prototype.toString.call(arr) == '[object Array]';
 };
 
-},{}],37:[function(require,module,exports){
+},{}],40:[function(require,module,exports){
 (function (global){
 /*! JSON v3.3.2 | http://bestiejs.github.io/json3 | Copyright 2012-2014, Kit Cambridge | http://kit.mit-license.org */
 ;(function () {
@@ -6297,158 +6918,7 @@ module.exports = Array.isArray || function (arr) {
 }).call(this);
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],38:[function(require,module,exports){
-/**
- * Helpers.
- */
-
-var s = 1000
-var m = s * 60
-var h = m * 60
-var d = h * 24
-var y = d * 365.25
-
-/**
- * Parse or format the given `val`.
- *
- * Options:
- *
- *  - `long` verbose formatting [false]
- *
- * @param {String|Number} val
- * @param {Object} options
- * @throws {Error} throw an error if val is not a non-empty string or a number
- * @return {String|Number}
- * @api public
- */
-
-module.exports = function (val, options) {
-  options = options || {}
-  var type = typeof val
-  if (type === 'string' && val.length > 0) {
-    return parse(val)
-  } else if (type === 'number' && isNaN(val) === false) {
-    return options.long ?
-			fmtLong(val) :
-			fmtShort(val)
-  }
-  throw new Error('val is not a non-empty string or a valid number. val=' + JSON.stringify(val))
-}
-
-/**
- * Parse the given `str` and return milliseconds.
- *
- * @param {String} str
- * @return {Number}
- * @api private
- */
-
-function parse(str) {
-  str = String(str)
-  if (str.length > 10000) {
-    return
-  }
-  var match = /^((?:\d+)?\.?\d+) *(milliseconds?|msecs?|ms|seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d|years?|yrs?|y)?$/i.exec(str)
-  if (!match) {
-    return
-  }
-  var n = parseFloat(match[1])
-  var type = (match[2] || 'ms').toLowerCase()
-  switch (type) {
-    case 'years':
-    case 'year':
-    case 'yrs':
-    case 'yr':
-    case 'y':
-      return n * y
-    case 'days':
-    case 'day':
-    case 'd':
-      return n * d
-    case 'hours':
-    case 'hour':
-    case 'hrs':
-    case 'hr':
-    case 'h':
-      return n * h
-    case 'minutes':
-    case 'minute':
-    case 'mins':
-    case 'min':
-    case 'm':
-      return n * m
-    case 'seconds':
-    case 'second':
-    case 'secs':
-    case 'sec':
-    case 's':
-      return n * s
-    case 'milliseconds':
-    case 'millisecond':
-    case 'msecs':
-    case 'msec':
-    case 'ms':
-      return n
-    default:
-      return undefined
-  }
-}
-
-/**
- * Short format for `ms`.
- *
- * @param {Number} ms
- * @return {String}
- * @api private
- */
-
-function fmtShort(ms) {
-  if (ms >= d) {
-    return Math.round(ms / d) + 'd'
-  }
-  if (ms >= h) {
-    return Math.round(ms / h) + 'h'
-  }
-  if (ms >= m) {
-    return Math.round(ms / m) + 'm'
-  }
-  if (ms >= s) {
-    return Math.round(ms / s) + 's'
-  }
-  return ms + 'ms'
-}
-
-/**
- * Long format for `ms`.
- *
- * @param {Number} ms
- * @return {String}
- * @api private
- */
-
-function fmtLong(ms) {
-  return plural(ms, d, 'day') ||
-    plural(ms, h, 'hour') ||
-    plural(ms, m, 'minute') ||
-    plural(ms, s, 'second') ||
-    ms + ' ms'
-}
-
-/**
- * Pluralization helper.
- */
-
-function plural(ms, n, name) {
-  if (ms < n) {
-    return
-  }
-  if (ms < n * 1.5) {
-    return Math.floor(ms / n) + ' ' + name
-  }
-  return Math.ceil(ms / n) + ' ' + name + 's'
-}
-
-},{}],39:[function(require,module,exports){
+},{}],41:[function(require,module,exports){
 (function (global){
 /**
  * JSON parse.
@@ -6483,7 +6953,7 @@ module.exports = function parsejson(data) {
   }
 };
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],40:[function(require,module,exports){
+},{}],42:[function(require,module,exports){
 /**
  * Compiles a querystring
  * Returns string representation of the object
@@ -6522,7 +6992,7 @@ exports.decode = function(qs){
   return qry;
 };
 
-},{}],41:[function(require,module,exports){
+},{}],43:[function(require,module,exports){
 /**
  * Parses an URI
  *
@@ -6563,7 +7033,7 @@ module.exports = function parseuri(str) {
     return uri;
 };
 
-},{}],42:[function(require,module,exports){
+},{}],44:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -6674,7 +7144,7 @@ exports.connect = lookup;
 exports.Manager = require('./manager');
 exports.Socket = require('./socket');
 
-},{"./manager":43,"./socket":45,"./url":46,"debug":48,"socket.io-parser":51}],43:[function(require,module,exports){
+},{"./manager":45,"./socket":47,"./url":48,"debug":50,"socket.io-parser":54}],45:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -7236,7 +7706,7 @@ Manager.prototype.onreconnect = function () {
   this.emitAll('reconnect', attempt);
 };
 
-},{"./on":44,"./socket":45,"backo2":9,"component-bind":12,"component-emitter":47,"debug":48,"engine.io-client":18,"indexof":35,"socket.io-parser":51}],44:[function(require,module,exports){
+},{"./on":46,"./socket":47,"backo2":14,"component-bind":17,"component-emitter":49,"debug":50,"engine.io-client":20,"indexof":38,"socket.io-parser":54}],46:[function(require,module,exports){
 
 /**
  * Module exports.
@@ -7262,7 +7732,7 @@ function on (obj, ev, fn) {
   };
 }
 
-},{}],45:[function(require,module,exports){
+},{}],47:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -7683,7 +8153,7 @@ Socket.prototype.compress = function (compress) {
   return this;
 };
 
-},{"./on":44,"component-bind":12,"component-emitter":47,"debug":48,"has-binary":33,"socket.io-parser":51,"to-array":53}],46:[function(require,module,exports){
+},{"./on":46,"component-bind":17,"component-emitter":49,"debug":50,"has-binary":36,"socket.io-parser":54,"to-array":59}],48:[function(require,module,exports){
 (function (global){
 
 /**
@@ -7762,13 +8232,15 @@ function url (uri, loc) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"debug":48,"parseuri":41}],47:[function(require,module,exports){
-arguments[4][28][0].apply(exports,arguments)
-},{"dup":28}],48:[function(require,module,exports){
-arguments[4][29][0].apply(exports,arguments)
-},{"./debug":49,"_process":61,"dup":29}],49:[function(require,module,exports){
+},{"debug":50,"parseuri":43}],49:[function(require,module,exports){
 arguments[4][30][0].apply(exports,arguments)
-},{"dup":30,"ms":38}],50:[function(require,module,exports){
+},{"dup":30}],50:[function(require,module,exports){
+arguments[4][31][0].apply(exports,arguments)
+},{"./debug":51,"_process":63,"dup":31}],51:[function(require,module,exports){
+arguments[4][32][0].apply(exports,arguments)
+},{"dup":32,"ms":52}],52:[function(require,module,exports){
+arguments[4][33][0].apply(exports,arguments)
+},{"dup":33}],53:[function(require,module,exports){
 (function (global){
 /*global Blob,File*/
 
@@ -7913,7 +8385,7 @@ exports.removeBlobs = function(data, callback) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./is-buffer":52,"isarray":36}],51:[function(require,module,exports){
+},{"./is-buffer":55,"isarray":39}],54:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -8319,7 +8791,7 @@ function error(data){
   };
 }
 
-},{"./binary":50,"./is-buffer":52,"component-emitter":13,"debug":15,"json3":37}],52:[function(require,module,exports){
+},{"./binary":53,"./is-buffer":55,"component-emitter":18,"debug":56,"json3":40}],55:[function(require,module,exports){
 (function (global){
 
 module.exports = isBuf;
@@ -8336,7 +8808,503 @@ function isBuf(obj) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],53:[function(require,module,exports){
+},{}],56:[function(require,module,exports){
+
+/**
+ * This is the web browser implementation of `debug()`.
+ *
+ * Expose `debug()` as the module.
+ */
+
+exports = module.exports = require('./debug');
+exports.log = log;
+exports.formatArgs = formatArgs;
+exports.save = save;
+exports.load = load;
+exports.useColors = useColors;
+exports.storage = 'undefined' != typeof chrome
+               && 'undefined' != typeof chrome.storage
+                  ? chrome.storage.local
+                  : localstorage();
+
+/**
+ * Colors.
+ */
+
+exports.colors = [
+  'lightseagreen',
+  'forestgreen',
+  'goldenrod',
+  'dodgerblue',
+  'darkorchid',
+  'crimson'
+];
+
+/**
+ * Currently only WebKit-based Web Inspectors, Firefox >= v31,
+ * and the Firebug extension (any Firefox version) are known
+ * to support "%c" CSS customizations.
+ *
+ * TODO: add a `localStorage` variable to explicitly enable/disable colors
+ */
+
+function useColors() {
+  // is webkit? http://stackoverflow.com/a/16459606/376773
+  return ('WebkitAppearance' in document.documentElement.style) ||
+    // is firebug? http://stackoverflow.com/a/398120/376773
+    (window.console && (console.firebug || (console.exception && console.table))) ||
+    // is firefox >= v31?
+    // https://developer.mozilla.org/en-US/docs/Tools/Web_Console#Styling_messages
+    (navigator.userAgent.toLowerCase().match(/firefox\/(\d+)/) && parseInt(RegExp.$1, 10) >= 31);
+}
+
+/**
+ * Map %j to `JSON.stringify()`, since no Web Inspectors do that by default.
+ */
+
+exports.formatters.j = function(v) {
+  return JSON.stringify(v);
+};
+
+
+/**
+ * Colorize log arguments if enabled.
+ *
+ * @api public
+ */
+
+function formatArgs() {
+  var args = arguments;
+  var useColors = this.useColors;
+
+  args[0] = (useColors ? '%c' : '')
+    + this.namespace
+    + (useColors ? ' %c' : ' ')
+    + args[0]
+    + (useColors ? '%c ' : ' ')
+    + '+' + exports.humanize(this.diff);
+
+  if (!useColors) return args;
+
+  var c = 'color: ' + this.color;
+  args = [args[0], c, 'color: inherit'].concat(Array.prototype.slice.call(args, 1));
+
+  // the final "%c" is somewhat tricky, because there could be other
+  // arguments passed either before or after the %c, so we need to
+  // figure out the correct index to insert the CSS into
+  var index = 0;
+  var lastC = 0;
+  args[0].replace(/%[a-z%]/g, function(match) {
+    if ('%%' === match) return;
+    index++;
+    if ('%c' === match) {
+      // we only are interested in the *last* %c
+      // (the user may have provided their own)
+      lastC = index;
+    }
+  });
+
+  args.splice(lastC, 0, c);
+  return args;
+}
+
+/**
+ * Invokes `console.log()` when available.
+ * No-op when `console.log` is not a "function".
+ *
+ * @api public
+ */
+
+function log() {
+  // this hackery is required for IE8/9, where
+  // the `console.log` function doesn't have 'apply'
+  return 'object' === typeof console
+    && console.log
+    && Function.prototype.apply.call(console.log, console, arguments);
+}
+
+/**
+ * Save `namespaces`.
+ *
+ * @param {String} namespaces
+ * @api private
+ */
+
+function save(namespaces) {
+  try {
+    if (null == namespaces) {
+      exports.storage.removeItem('debug');
+    } else {
+      exports.storage.debug = namespaces;
+    }
+  } catch(e) {}
+}
+
+/**
+ * Load `namespaces`.
+ *
+ * @return {String} returns the previously persisted debug modes
+ * @api private
+ */
+
+function load() {
+  var r;
+  try {
+    r = exports.storage.debug;
+  } catch(e) {}
+  return r;
+}
+
+/**
+ * Enable namespaces listed in `localStorage.debug` initially.
+ */
+
+exports.enable(load());
+
+/**
+ * Localstorage attempts to return the localstorage.
+ *
+ * This is necessary because safari throws
+ * when a user disables cookies/localstorage
+ * and you attempt to access it.
+ *
+ * @return {LocalStorage}
+ * @api private
+ */
+
+function localstorage(){
+  try {
+    return window.localStorage;
+  } catch (e) {}
+}
+
+},{"./debug":57}],57:[function(require,module,exports){
+
+/**
+ * This is the common logic for both the Node.js and web browser
+ * implementations of `debug()`.
+ *
+ * Expose `debug()` as the module.
+ */
+
+exports = module.exports = debug;
+exports.coerce = coerce;
+exports.disable = disable;
+exports.enable = enable;
+exports.enabled = enabled;
+exports.humanize = require('ms');
+
+/**
+ * The currently active debug mode names, and names to skip.
+ */
+
+exports.names = [];
+exports.skips = [];
+
+/**
+ * Map of special "%n" handling functions, for the debug "format" argument.
+ *
+ * Valid key names are a single, lowercased letter, i.e. "n".
+ */
+
+exports.formatters = {};
+
+/**
+ * Previously assigned color.
+ */
+
+var prevColor = 0;
+
+/**
+ * Previous log timestamp.
+ */
+
+var prevTime;
+
+/**
+ * Select a color.
+ *
+ * @return {Number}
+ * @api private
+ */
+
+function selectColor() {
+  return exports.colors[prevColor++ % exports.colors.length];
+}
+
+/**
+ * Create a debugger with the given `namespace`.
+ *
+ * @param {String} namespace
+ * @return {Function}
+ * @api public
+ */
+
+function debug(namespace) {
+
+  // define the `disabled` version
+  function disabled() {
+  }
+  disabled.enabled = false;
+
+  // define the `enabled` version
+  function enabled() {
+
+    var self = enabled;
+
+    // set `diff` timestamp
+    var curr = +new Date();
+    var ms = curr - (prevTime || curr);
+    self.diff = ms;
+    self.prev = prevTime;
+    self.curr = curr;
+    prevTime = curr;
+
+    // add the `color` if not set
+    if (null == self.useColors) self.useColors = exports.useColors();
+    if (null == self.color && self.useColors) self.color = selectColor();
+
+    var args = Array.prototype.slice.call(arguments);
+
+    args[0] = exports.coerce(args[0]);
+
+    if ('string' !== typeof args[0]) {
+      // anything else let's inspect with %o
+      args = ['%o'].concat(args);
+    }
+
+    // apply any `formatters` transformations
+    var index = 0;
+    args[0] = args[0].replace(/%([a-z%])/g, function(match, format) {
+      // if we encounter an escaped % then don't increase the array index
+      if (match === '%%') return match;
+      index++;
+      var formatter = exports.formatters[format];
+      if ('function' === typeof formatter) {
+        var val = args[index];
+        match = formatter.call(self, val);
+
+        // now we need to remove `args[index]` since it's inlined in the `format`
+        args.splice(index, 1);
+        index--;
+      }
+      return match;
+    });
+
+    if ('function' === typeof exports.formatArgs) {
+      args = exports.formatArgs.apply(self, args);
+    }
+    var logFn = enabled.log || exports.log || console.log.bind(console);
+    logFn.apply(self, args);
+  }
+  enabled.enabled = true;
+
+  var fn = exports.enabled(namespace) ? enabled : disabled;
+
+  fn.namespace = namespace;
+
+  return fn;
+}
+
+/**
+ * Enables a debug mode by namespaces. This can include modes
+ * separated by a colon and wildcards.
+ *
+ * @param {String} namespaces
+ * @api public
+ */
+
+function enable(namespaces) {
+  exports.save(namespaces);
+
+  var split = (namespaces || '').split(/[\s,]+/);
+  var len = split.length;
+
+  for (var i = 0; i < len; i++) {
+    if (!split[i]) continue; // ignore empty strings
+    namespaces = split[i].replace(/\*/g, '.*?');
+    if (namespaces[0] === '-') {
+      exports.skips.push(new RegExp('^' + namespaces.substr(1) + '$'));
+    } else {
+      exports.names.push(new RegExp('^' + namespaces + '$'));
+    }
+  }
+}
+
+/**
+ * Disable debug output.
+ *
+ * @api public
+ */
+
+function disable() {
+  exports.enable('');
+}
+
+/**
+ * Returns true if the given mode name is enabled, false otherwise.
+ *
+ * @param {String} name
+ * @return {Boolean}
+ * @api public
+ */
+
+function enabled(name) {
+  var i, len;
+  for (i = 0, len = exports.skips.length; i < len; i++) {
+    if (exports.skips[i].test(name)) {
+      return false;
+    }
+  }
+  for (i = 0, len = exports.names.length; i < len; i++) {
+    if (exports.names[i].test(name)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Coerce `val`.
+ *
+ * @param {Mixed} val
+ * @return {Mixed}
+ * @api private
+ */
+
+function coerce(val) {
+  if (val instanceof Error) return val.stack || val.message;
+  return val;
+}
+
+},{"ms":58}],58:[function(require,module,exports){
+/**
+ * Helpers.
+ */
+
+var s = 1000;
+var m = s * 60;
+var h = m * 60;
+var d = h * 24;
+var y = d * 365.25;
+
+/**
+ * Parse or format the given `val`.
+ *
+ * Options:
+ *
+ *  - `long` verbose formatting [false]
+ *
+ * @param {String|Number} val
+ * @param {Object} options
+ * @return {String|Number}
+ * @api public
+ */
+
+module.exports = function(val, options){
+  options = options || {};
+  if ('string' == typeof val) return parse(val);
+  return options.long
+    ? long(val)
+    : short(val);
+};
+
+/**
+ * Parse the given `str` and return milliseconds.
+ *
+ * @param {String} str
+ * @return {Number}
+ * @api private
+ */
+
+function parse(str) {
+  str = '' + str;
+  if (str.length > 10000) return;
+  var match = /^((?:\d+)?\.?\d+) *(milliseconds?|msecs?|ms|seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d|years?|yrs?|y)?$/i.exec(str);
+  if (!match) return;
+  var n = parseFloat(match[1]);
+  var type = (match[2] || 'ms').toLowerCase();
+  switch (type) {
+    case 'years':
+    case 'year':
+    case 'yrs':
+    case 'yr':
+    case 'y':
+      return n * y;
+    case 'days':
+    case 'day':
+    case 'd':
+      return n * d;
+    case 'hours':
+    case 'hour':
+    case 'hrs':
+    case 'hr':
+    case 'h':
+      return n * h;
+    case 'minutes':
+    case 'minute':
+    case 'mins':
+    case 'min':
+    case 'm':
+      return n * m;
+    case 'seconds':
+    case 'second':
+    case 'secs':
+    case 'sec':
+    case 's':
+      return n * s;
+    case 'milliseconds':
+    case 'millisecond':
+    case 'msecs':
+    case 'msec':
+    case 'ms':
+      return n;
+  }
+}
+
+/**
+ * Short format for `ms`.
+ *
+ * @param {Number} ms
+ * @return {String}
+ * @api private
+ */
+
+function short(ms) {
+  if (ms >= d) return Math.round(ms / d) + 'd';
+  if (ms >= h) return Math.round(ms / h) + 'h';
+  if (ms >= m) return Math.round(ms / m) + 'm';
+  if (ms >= s) return Math.round(ms / s) + 's';
+  return ms + 'ms';
+}
+
+/**
+ * Long format for `ms`.
+ *
+ * @param {Number} ms
+ * @return {String}
+ * @api private
+ */
+
+function long(ms) {
+  return plural(ms, d, 'day')
+    || plural(ms, h, 'hour')
+    || plural(ms, m, 'minute')
+    || plural(ms, s, 'second')
+    || ms + ' ms';
+}
+
+/**
+ * Pluralization helper.
+ */
+
+function plural(ms, n, name) {
+  if (ms < n) return;
+  if (ms < n * 1.5) return Math.floor(ms / n) + ' ' + name;
+  return Math.ceil(ms / n) + ' ' + name + 's';
+}
+
+},{}],59:[function(require,module,exports){
 module.exports = toArray
 
 function toArray(list, index) {
@@ -8351,7 +9319,7 @@ function toArray(list, index) {
     return array
 }
 
-},{}],54:[function(require,module,exports){
+},{}],60:[function(require,module,exports){
 (function (global){
 /*! https://mths.be/wtf8 v1.0.0 by @mathias */
 ;(function(root) {
@@ -8589,7 +9557,7 @@ function toArray(list, index) {
 }(this));
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],55:[function(require,module,exports){
+},{}],61:[function(require,module,exports){
 'use strict';
 
 var alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_'.split('')
@@ -8659,954 +9627,9 @@ yeast.encode = encode;
 yeast.decode = decode;
 module.exports = yeast;
 
-},{}],56:[function(require,module,exports){
-var Player = require('./player.js');
-var Grid = require('./grid.js');
-var consts = require('./game-consts.js');
-var core = require('./game-core.js');
-var io = require('socket.io-client');
+},{}],62:[function(require,module,exports){
 
-var GRID_SIZE = consts.GRID_SIZE;
-var CELL_WIDTH = consts.CELL_WIDTH;
-
-var running = false;
-var user, socket, frame;
-var players, allPlayers;
-
-var kills;
-
-var timeout = undefined;
-var dirty = false;
-var deadFrames = 0;
-var requesting = -1; //frame that we are requesting at.
-var frameCache = []; //Frames after our request.
-
-var allowAnimation = true;
-
-var grid = new Grid(consts.GRID_SIZE, function(row, col, before, after) {
-  invokeRenderer('updateGrid', [row, col, before, after]);
-}); 
-
-/**
- * Provides requestAnimationFrame in a cross browser way. (edited so that this is also compatible with node.)
- * @author paulirish / http://paulirish.com/
- */
-// window.requestAnimationFrame = function( /* function FrameRequestCallback */ callback, /* DOMElement Element */ element ) {
-//       window.setTimeout( callback, 1000 / 60 );
-//     };
-
-var hasWindow;
-try {
-  window.document;
-  hasWindow = true;
-} catch (e) {
-  hasWindow = false;
-}
-
-var requestAnimationFrame;
-if ( !requestAnimationFrame ) {
-  requestAnimationFrame = ( function() {
-    if (hasWindow) {
-      return window.requestAnimationFrame ||
-      window.webkitRequestAnimationFrame ||
-      window.mozRequestAnimationFrame ||
-      window.oRequestAnimationFrame ||
-      window.msRequestAnimationFrame ||
-      function( /* function FrameRequestCallback */ callback, /* DOMElement Element */ element ) {
-        setTimeout( callback, 1000 / 60 );
-      };
-    } else {
-      return function( /* function FrameRequestCallback */ callback, /* DOMElement Element */ element ) {
-        setTimeout( callback, 1000 / 60 );
-      };
-    }
-  })();
-}
-
-//Public API
-function connectGame(url, name, callback) {
-  if (running)
-    return; //Prevent multiple runs.
-  running = true;
-  
-  user = null;
-  deadFrames = 0;
-  
-  //Socket connection.
-  io.j = [];
-  io.sockets = [];
-  socket = io(url, {
-    'forceNew': true,
-    upgrade: false,
-    transports: ['websocket']
-  });
-  socket.on('connect', function(){
-    console.info('Connected to server.');
-  });
-  socket.on('game', function(data) {
-    if (timeout != undefined)
-      clearTimeout(timeout);
-    
-    //Initialize game.
-    //TODO: display data.gameid --- game id #
-    frame = data.frame;
-    
-    reset();
-    
-    //Load players.
-    data.players.forEach(function(p) {
-      var pl = new Player(grid, p);
-      addPlayer(pl);
-    });
-    user = allPlayers[data.num];
-    if (!user) 
-      throw new Error();
-    setUser(user);
-    
-    //Load grid.
-    var gridData = new Uint8Array(data.grid);
-    for (var r = 0; r < grid.size; r++)
-      for (var c = 0; c < grid.size; c++)
-      {
-        var ind = gridData[r * grid.size + c] - 1;
-        grid.set(r, c, ind === -1 ? null : players[ind]);
-      }
-    
-    invokeRenderer('paint', []);
-    frame = data.frame;
-    
-    if (requesting !== -1)
-    {
-      //Update those cache frames after we updated game.
-      var minFrame = requesting;
-      requesting = -1;
-      while (frameCache.length > frame - minFrame)
-        processFrame(frameCache[frame - minFrame]);
-      frameCache = [];
-    }
-  });
-  
-  socket.on('notifyFrame', processFrame);
-  
-  socket.on('dead', function() {
-    socket.disconnect(); //In case we didn't get the disconnect call.
-  });
-  
-  socket.on('disconnect', function(){
-    if (!user)
-      return;
-    console.info('Server has disconnected. Creating new game.');
-    socket.disconnect();
-    user.die();
-    dirty = true;
-    paintLoop();
-    running = false;
-    invokeRenderer('disconnect', []);
-  });
-  
-  socket.emit('hello', {
-    name: name,
-    type: 0, //Free-for-all
-    gameid: -1 //Requested game-id, or -1 for anyone.
-  }, function(success, msg) {
-    if (success) 
-      console.info('Connected to game!');
-    else {
-      console.error('Unable to connect to game: ' + msg);
-      running = false;
-    }
-    if (callback)
-      callback(success, msg);
-  });
-  
-  
-}
-
-function changeHeading(newHeading) {
-  if (!user || user.dead)
-    return;
-  if (newHeading === user.currentHeading || ((newHeading % 2 === 0) ^ 
-    (user.currentHeading % 2 === 0)))
-  {
-    //user.heading = newHeading;
-    if (socket) {
-      socket.emit('frame', {
-        frame: frame,
-        heading: newHeading
-      }, function(success, msg) {
-        if (!success)
-          console.error(msg);
-      });
-    }
-  }
-}
-
-function getPlayers() {
-  return players.slice();
-}
-
-//Private API
-function addPlayer(player) {
-  if (allPlayers[player.num])
-    return; //Already added.
-  allPlayers[player.num] = players[players.length] = player;
-  invokeRenderer('addPlayer', [player]);
-  return players.length - 1;
-}
-
-function invokeRenderer(name, args) {
-  var renderer = exports.renderer;
-  if (renderer && typeof renderer[name] === 'function')
-    renderer[name].apply(exports, args);
-}
-
-
-function processFrame(data)
-{
-  if (timeout != undefined)
-      clearTimeout(timeout);
-    
-  if (requesting !== -1 && requesting < data.frame)
-  {
-    frameCache.push(data);
-    return;
-  }
-  
-  if (data.frame - 1 !== frame)
-  {
-    console.error('Frames don\'t match up!');
-    socket.emit('requestFrame'); //Restore data.
-    requesting = data.frame;
-    frameCache.push(data);
-    return;
-  }
-  
-  frame++;
-  if (data.newPlayers)
-  {
-    data.newPlayers.forEach(function(p) {
-      if (p.num === user.num)
-        return;
-      var pl = new Player(grid, p);
-      addPlayer(pl);
-      core.initPlayer(grid, pl);
-    });
-  }
-  
-  var found = new Array(players.length);
-  data.moves.forEach(function(val, i) {
-    var player = allPlayers[val.num];
-    if (!player) return;
-    if (val.left) player.die();
-    found[i] = true;
-    player.heading = val.heading;
-  });
-  for (var i = 0; i < players.length; i++)
-  {
-    //Implicitly leaving game.
-    if (!found[i])
-    {
-      var player = players[i];
-      player && player.die();
-    }
-  }
-  
-  update();
-  
-  var locs = {};
-  for (var i = 0; i < players.length; i++)
-  {
-    var p = players[i];
-    locs[p.num] = [p.posX, p.posY, p.waitLag];
-  }
-  
-  /*
-  socket.emit('verify', {
-    frame: frame,
-    locs: locs
-  }, function(frame, success, adviceFix, msg) {
-    if (!success && requesting === -1) 
-    {
-      console.error(frame + ': ' + msg);
-      if (adviceFix)
-        socket.emit('requestFrame');
-    }
-  }.bind(this, frame));
-  */
-  
-  dirty = true;
-  requestAnimationFrame(function() {
-    paintLoop();
-  });
-  timeout = setTimeout(function() {
-    console.warn('Server has timed-out. Disconnecting.');
-    socket.disconnect();
-  }, 3000);
-}
-
-function paintLoop()
-{
-  if (!dirty)
-    return;
-  invokeRenderer('paint', []);
-  dirty = false;
-  
-  if (user && user.dead)
-  {
-    if (timeout)
-      clearTimeout(timeout);
-    if (deadFrames === 60) //One second of frame
-    {
-      var before =allowAnimation;
-      allowAnimation = false;
-      update();
-      invokeRenderer('paint', []);
-      allowAnimation = before;
-      user = null;
-      deadFrames = 0;
-      return;
-    }
-    
-    socket.disconnect();
-    deadFrames++;
-    dirty = true;
-    update();
-    requestAnimationFrame(paintLoop);
-  }
-}
-
-function reset() {
-  user = null;
-  
-  grid.reset();
-  players = [];
-  allPlayers = [];
-  kills = 0;
-  
-  invokeRenderer('reset');
-}
-
-function setUser(player) {
-  user = player;
-  invokeRenderer('setUser', [player]);
-}
-
-function update() {
-  var dead = [];
-  core.updateFrame(grid, players, dead, function addKill(killer, other)
-  {
-    if (players[killer] === user && killer !== other)
-      kills++;
-  });
-  dead.forEach(function(val) {
-    console.log((val.name || 'Unnamed') + ' is dead');
-    delete allPlayers[val.num];
-    invokeRenderer('removePlayer', [val]);
-  });
-  
-  invokeRenderer('update', [frame]);
-}
-
-//Export stuff
-var funcs = [connectGame, changeHeading, getPlayers];
-funcs.forEach(function (f) {
-  exports[f.name] = f;
-});
-
-exports.renderer = null;
-Object.defineProperties(exports, {
-  allowAnimation: {
-    get: function() { return allowAnimation; },
-    set: function(val) { allowAnimation = !!val; },
-    enumerable: true
-  },
-  grid: {
-    get: function() { return grid; },
-    enumerable: true
-  },
-  kills: {
-    get: function() { return kills; },
-    enumerable: true
-  }
-});
-},{"./game-consts.js":3,"./game-core.js":4,"./grid.js":6,"./player.js":57,"socket.io-client":42}],57:[function(require,module,exports){
-var Stack = require("./stack.js");
-var Color = require("./color.js");
-var Grid = require("./grid.js");
-var consts = require("./game-consts.js");
-
-var GRID_SIZE = consts.GRID_SIZE;
-var CELL_WIDTH = consts.CELL_WIDTH;
-var NEW_PLAYER_LAG = 60; //wait for a second at least.
-
-function defineGetter(getter) {
-  return {
-    get: getter,
-    enumerable: true
-  };
-}
-
-function defineInstanceMethods(thisobj, data /*, methods...*/)
-{
-  for (var i = 2; i < arguments.length; i++)
-    thisobj[arguments[i].name] = arguments[i].bind(this, data);
-}
-
-function defineAccessorProperties(thisobj, data /*, names...*/)
-{
-  var descript = {};
-  function getAt(name) { return function() {return data[name] } }
-  for (var i = 2; i < arguments.length; i++)
-    descript[arguments[i]] = defineGetter(getAt(arguments[i]));
-  Object.defineProperties(thisobj, descript);
-}
-
-function TailMove(orientation)
-{
-  this.move = 1;
-  Object.defineProperty(this, "orientation", {
-    value: orientation,
-    enumerable: true
-  });
-}
-
-function Tail(player, sdata)
-{
-  var data = {
-    tail: [],
-    tailGrid: [],
-    prev: null,
-    startRow: 0,
-    startCol: 0,
-    prevRow: 0, 
-    prevCol: 0,
-    player: player
-  };
-  
-  if (sdata)
-  {
-    data.startRow = data.prevRow = sdata.startRow || 0;
-    data.startCol = data.prevCol = sdata.startCol || 0;
-    sdata.tail.forEach(function(val) {
-      addTail(data, val.orientation, val.move);
-    });
-  }
-  data.grid = player.grid;
-  
-  defineInstanceMethods(this, data, addTail, hitsTail, fillTail, renderTail, reposition, serialData);
-  Object.defineProperty(this, "moves", {
-    get: function() {return data.tail.slice(0);},
-    enumerable: true
-  });
-}
-
-//Instance methods.
-function serialData(data) {
-  return {
-    tail: data.tail,
-    startRow: data.startRow,
-    startCol: data.startCol
-  };
-}
-
-function setTailGrid(data, tailGrid, r, c)
-{
-  if (!tailGrid[r])
-    tailGrid[r] = [];
-  tailGrid[r][c] = true;
-}
-
-function addTail(data, orientation, count)
-{
-  if (count === undefined)
-    count = 1;
-  if (!count || count < 0)
-    return;
-  
-  var prev = data.prev;
-  var r = data.prevRow, c = data.prevCol;
-  if (data.tail.length === 0)
-    setTailGrid(data, data.tailGrid, r, c);
-  
-  if (!prev || prev.orientation !== orientation)
-  {
-    prev = data.prev = new TailMove(orientation);
-    data.tail.push(prev);
-    prev.move += count - 1;
-  }
-  else
-    prev.move += count;
-
-  for (var i = 0; i < count; i++)
-  {
-    var pos = walk([data.prevRow, data.prevCol], null, orientation, 1);
-    data.prevRow = pos[0];
-    data.prevCol = pos[1];
-    setTailGrid(data, data.tailGrid, pos[0], pos[1]);
-  }
-  
-}
-
-function reposition(data, row, col)
-{
-  data.prevRow = data.startRow = row;
-  data.prevCol = data.startCol = col;
-  data.prev = null;
-  if (data.tail.length === 0)
-    return;
-  else 
-  {
-    var ret = data.tail;
-    data.tail = [];
-    data.tailGrid = [];
-    return ret;
-  }
-}
-
-/*
-function render2(data, ctx)
-{
-  ctx.fillStyle = data.player.tailColor.rgbString();
-  for (var r = 0; r < data.tailGrid.length; r++)
-  {
-    if (!data.tailGrid[r])
-      continue;
-    for (var c = 0; c < data.tailGrid[r].length; c++)
-      if (data.tailGrid[r][c])
-        ctx.fillRect(c * CELL_WIDTH, r * CELL_WIDTH, CELL_WIDTH, CELL_WIDTH);
-  }
-}
-*/
-
-//Helper methods.
-function renderTail(data, ctx)
-{
-  if (data.tail.length === 0)
-    return;
-  
-  ctx.fillStyle = data.player.tailColor.rgbString();
-  
-  var prevOrient = -1;
-  var start = [data.startRow, data.startCol];
-  
-  //fillTailRect(ctx, start, start);
-  data.tail.forEach(function(tail) {
-    var negDir = tail.orientation === 0 || tail.orientation === 3;
-
-    var back = start;
-    if (!negDir)
-      start = walk(start, null, tail.orientation, 1);
-    var finish = walk(start, null, tail.orientation, tail.move - 1);
-    
-    if (tail.move > 1)
-      fillTailRect(ctx, start, finish);
-    if (prevOrient !== -1)
-      //Draw folding triangle.
-      renderCorner(ctx, back, prevOrient, tail.orientation);
-    
-    start = finish;
-    if (negDir)
-      walk(start, start, tail.orientation, 1);
-    prevOrient = tail.orientation;
-  });
-  
-  var curOrient = data.player.currentHeading;
-  if (prevOrient === curOrient)
-  {
-    fillTailRect(ctx, start, start);
-  }
-  else
-    renderCorner(ctx, start, prevOrient, curOrient);
-}
-
-function renderCorner(ctx, cornerStart, dir1, dir2)
-{
-  if (dir1 === 0 || dir2 === 0)
-    walk(cornerStart, cornerStart, 2, 1);
-  if (dir1 === 3 || dir2 === 3)
-    walk(cornerStart, cornerStart, 1, 1);
-  
-  var a = walk(cornerStart, null, dir2, 1);
-  var b = walk(a, null, dir1, 1);
-  
-  var triangle = new Path2D();
-  triangle.moveTo(cornerStart[1] * CELL_WIDTH, cornerStart[0] * CELL_WIDTH);
-  triangle.lineTo(a[1] * CELL_WIDTH, a[0] * CELL_WIDTH);
-  triangle.lineTo(b[1] * CELL_WIDTH, b[0] * CELL_WIDTH);
-  triangle.closePath();
-  for (var i = 0; i < 2; i++)
-    ctx.fill(triangle);
-}
-
-function walk(from, ret, orient, dist)
-{
-  ret = ret || [];
-  ret[0] = from[0];
-  ret[1] = from[1];
-  switch (orient)
-  {
-    case 0: ret[0] -= dist; break; //UP
-    case 1: ret[1] += dist; break; //RIGHT
-    case 2: ret[0] += dist; break; //DOWN
-    case 3: ret[1] -= dist; break; //LEFT
-  }
-  return ret;
-}
-
-function fillTailRect(ctx, start, end)
-{
-  var x = start[1] * CELL_WIDTH;
-  var y = start[0] * CELL_WIDTH;
-  var width = (end[1] - start[1]) * CELL_WIDTH;
-  var height = (end[0] - start[0]) * CELL_WIDTH;
-  
-  if (width === 0)
-    width += CELL_WIDTH;
-  if (height === 0)
-    height += CELL_WIDTH;
-  
-  if (width < 0)
-  {
-    x += width;
-    width = -width;
-  }
-  if (height < 0)
-  {
-    y += height;
-    height = -height;
-  }
-  ctx.fillRect(x, y, width, height);
-}
-
-function fillTail(data)
-{
-  if (data.tail.length === 0)
-    return;
-  
-  function onTail(c) { return data.tailGrid[c[0]] && data.tailGrid[c[0]][c[1]]; }
-  
-  var grid = data.grid;
-  var start = [data.startRow, data.startCol];
-  var been = new Grid(grid.size);
-  var coords = [];
-  
-  coords.push(start);
-  while (coords.length > 0) //BFS for all tail spaces.
-  {
-    var coord = coords.shift();
-    var r = coord[0];
-    var c = coord[1];
-    
-    if (grid.isOutOfBounds(r, c))
-      continue;
-    
-    if (been.get(r, c))
-      continue;
-    
-    if (onTail(coord)) //on the tail.
-    {
-      been.set(r, c, true);
-      grid.set(r, c, data.player);
-      
-      //Find all spots that this tail encloses.
-      floodFill(data, grid, r + 1, c, been);
-      floodFill(data, grid, r - 1, c, been);
-      floodFill(data, grid, r, c + 1, been);
-      floodFill(data, grid, r, c - 1, been);
-      
-      coords.push([r + 1, c]);
-      coords.push([r - 1, c]);
-      coords.push([r, c + 1]);
-      coords.push([r, c - 1]);
-    }
-  }
-}
-
-function floodFill(data, grid, row, col, been)
-{
-  function onTail(c) { return data.tailGrid[c[0]] && data.tailGrid[c[0]][c[1]]; }
-  
-  var start = [row, col];
-  if (grid.isOutOfBounds(row, col) || been.get(row, col) || onTail(start) || grid.get(row, col) === data.player)
-      return; //Avoid allocating too many resources.
-  
-  var coords = [];
-  var filled = new Stack(GRID_SIZE * GRID_SIZE + 1);
-  var surrounded = true;
-  
-  coords.push(start);
-  while (coords.length > 0)
-  {
-    var coord = coords.shift();
-    var r = coord[0];
-    var c = coord[1];
-    
-    if (grid.isOutOfBounds(r, c))
-    {
-      surrounded = false;
-      continue;
-    }
-    
-    //End this traverse on boundaries (where we been, on the tail, and when we enter our territory)
-    if (been.get(r, c) || onTail(coord) || grid.get(r, c) === data.player)
-      continue;
-      
-    been.set(r, c, true);
-    
-    if (surrounded)
-      filled.push(coord);
-    
-    coords.push([r + 1, c]);
-    coords.push([r - 1, c]);
-    coords.push([r, c + 1]);
-    coords.push([r, c - 1]);
-  }
-  if (surrounded)
-  {
-    while (!filled.isEmpty())
-    {
-      coord = filled.pop();
-      grid.set(coord[0], coord[1], data.player);
-    }
-  }
-  
-  return surrounded;
-}
-
-function hitsTail(data, other)
-{
-  return (data.prevRow !== other.row || data.prevCol !== other.col) &&
-        (data.startRow !== other.row || data.startCol !== other.col) && 
-    !!(data.tailGrid[other.row] && data.tailGrid[other.row][other.col]);
-}
-
-var SPEED = 5;
-var SHADOW_OFFSET = 10;
-
-function Player(grid, sdata) {
-  var data = {};
-  
-  //Parameters
-  data.num = sdata.num;
-  data.name = sdata.name || ""; //|| "Player " + (data.num + 1);
-  data.grid = grid;
-  data.posX = sdata.posX;
-  data.posY = sdata.posY;
-  this.heading = data.currentHeading = sdata.currentHeading; //0 is up, 1 is right, 2 is down, 3 is left.
-  data.waitLag = sdata.waitLag || 0;
-  data.dead = false;
-  
-  //Only need colors for client side.
-  var base;
-  if (sdata.base)
-    base = this.baseColor = sdata.base instanceof Color ? sdata.base : Color.fromData(sdata.base);
-  else
-  {
-    var hue = Math.random();
-    this.baseColor = base = new Color(hue, .8, .5);
-  }
-  this.lightBaseColor = base.deriveLumination(.1);
-  this.shadowColor = base.deriveLumination(-.3);
-  this.tailColor = base.deriveLumination(.3).deriveAlpha(.5);
-  
-  //Tail requires special handling.
-  this.grid = grid; //Temporary
-  if (sdata.tail) 
-    data.tail = new Tail(this, sdata.tail);
-  else 
-  {
-    data.tail = new Tail(this);
-    data.tail.reposition(calcRow(data), calcCol(data));
-  }
-  
-  //Instance methods.
-  this.move = move.bind(this, data);
-  this.die = function() { data.dead = true;};
-  this.serialData = function() {
-    return {
-      base: this.baseColor,
-      num: data.num,
-      name: data.name,
-      posX: data.posX,
-      posY: data.posY,
-      currentHeading: data.currentHeading,
-      tail: data.tail.serialData(),
-      waitLag: data.waitLag
-    };
-  };
-  
-  //Read-only Properties.
-  defineAccessorProperties(this, data, "currentHeading", "dead", "name", "num", "posX", "posY", "grid", "tail", "waitLag");
-  Object.defineProperties(this, {
-    row: defineGetter(function() { return calcRow(data); }),
-    col: defineGetter(function() { return calcCol(data); })
-  });
-}
-
-//Gets the next integer in positive or negative direction.
-function nearestInteger(positive, val)
-{
-  return positive ? Math.ceil(val) : Math.floor(val);
-}
-
-function calcRow(data)
-{
-  return nearestInteger(data.currentHeading === 2 /*DOWN*/, data.posY / CELL_WIDTH);
-}
-
-function calcCol(data)
-{
-  return nearestInteger(data.currentHeading === 1 /*RIGHT*/, data.posX / CELL_WIDTH);
-}
-
-//Instance methods
-Player.prototype.render = function(ctx, fade)
-{
-  //Render tail.
-  this.tail.renderTail(ctx);
-  
-  //Render player.
-  fade = fade || 1;
-  ctx.fillStyle = this.shadowColor.deriveAlpha(fade).rgbString();
-  ctx.fillRect(this.posX, this.posY, CELL_WIDTH, CELL_WIDTH);
-  
-  var mid = CELL_WIDTH / 2;
-  var grd = ctx.createRadialGradient(this.posX + mid, this.posY + mid - SHADOW_OFFSET, 1,
-            this.posX + mid, this.posY + mid - SHADOW_OFFSET, CELL_WIDTH);
-  grd.addColorStop(0, this.baseColor.deriveAlpha(fade).rgbString());
-  grd.addColorStop(1, new Color(0, 0, 1, fade).rgbString());
-  ctx.fillStyle = grd;
-  ctx.fillRect(this.posX - 1, this.posY - SHADOW_OFFSET, CELL_WIDTH + 2, CELL_WIDTH);
-  
-  //Render name
-  ctx.fillStyle = this.shadowColor.deriveAlpha(fade).rgbString();
-  ctx.textAlign = "center";
-  
-  var yoff = -SHADOW_OFFSET * 2;
-  if (this.row === 0)
-    yoff = SHADOW_OFFSET * 2 + CELL_WIDTH;
-  ctx.font = "18px Changa";
-  ctx.fillText(this.name, this.posX + CELL_WIDTH / 2, this.posY + yoff);
-};
-
-
-function move(data)
-{
-  if (data.waitLag < NEW_PLAYER_LAG)
-  {
-    data.waitLag++;
-    return;
-  }
-  
-  //Move to new position.
-  var heading = this.heading;
-  if (this.posX % CELL_WIDTH !== 0 || this.posY % CELL_WIDTH !== 0)
-    heading = data.currentHeading;
-  else 
-    data.currentHeading = heading;
-  switch (heading)
-  {
-    case 0: data.posY -= SPEED; break; //UP
-    case 1: data.posX += SPEED; break; //RIGHT
-    case 2: data.posY += SPEED; break; //DOWN
-    case 3: data.posX -= SPEED; break; //LEFT
-  }
-  
-  //Check for out of bounds.
-  var row = this.row, col = this.col;
-  if (data.grid.isOutOfBounds(row, col))
-  {
-    data.dead = true;
-    return;
-  }
-  
-  //Update tail position.
-  if (data.grid.get(row, col) === this)
-  {
-    //Safe zone!
-    this.tail.fillTail();
-    this.tail.reposition(row, col);
-  }
-  //If we are completely in a new cell (not in our safe zone), we add to the tail.
-  else if (this.posX % CELL_WIDTH === 0 && this.posY % CELL_WIDTH === 0)
-    this.tail.addTail(heading);
-}
-
-module.exports = Player;
-},{"./color.js":1,"./game-consts.js":3,"./grid.js":6,"./stack.js":59}],58:[function(require,module,exports){
-
-function Rolling(value, frames)
-{
-  var lag = 0;
-  
-  if (!frames)
-    frames = 24;
-  
-  this.value = value;
-  
-  Object.defineProperty(this, "lag", {
-    get: function() { return lag; },
-    enumerable: true
-  });
-  this.update = function() {
-    var delta = this.value - lag;
-    var dir = Math.sign(delta);
-    var speed = Math.abs(delta) / frames;
-    var mag = Math.min(Math.abs(speed), Math.abs(delta));
-    
-    lag += mag * dir;
-    return lag;
-  }
-}
-
-module.exports = Rolling;
-
-
-},{}],59:[function(require,module,exports){
-
-
-function Stack(initSize)
-{
-  var len = 0;
-  var arr = [];
-  
-  this.ensureCapacity = function(size)
-  {
-    arr.length = Math.max(arr.length, size || 0);
-  };
-  
-  this.push = function(ele)
-  {
-    this[len] = ele;
-    len++;
-  };
-  
-  this.pop = function()
-  {
-    if (len === 0)
-      return;
-    len--;
-    var tmp = this[len];
-    this[len] = undefined;
-    return tmp;
-  };
-  
-  this.isEmpty = function() {
-    return len === 0;
-  }
-  
-  this.ensureCapacity(initSize);
-  
-  
-  Object.defineProperty(this, "length", {
-    get: function() {return len;}
-  });
-}
-
-module.exports = Stack;
-},{}],60:[function(require,module,exports){
-
-},{}],61:[function(require,module,exports){
+},{}],63:[function(require,module,exports){
 // shim for using process in browser
 var process = module.exports = {};
 
@@ -9777,6 +9800,10 @@ process.off = noop;
 process.removeListener = noop;
 process.removeAllListeners = noop;
 process.emit = noop;
+process.prependListener = noop;
+process.prependOnceListener = noop;
+
+process.listeners = function (name) { return [] }
 
 process.binding = function (name) {
     throw new Error('process.binding is not supported');
@@ -9788,4 +9815,4 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}]},{},[2]);
+},{}]},{},[4]);
