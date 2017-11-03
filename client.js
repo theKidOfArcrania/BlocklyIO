@@ -178,6 +178,20 @@ function changeHeading(newHeading) {
   }
 }
 
+function getUser() {
+  return user;
+}
+
+function getOthers() {
+  var ret = [];
+  for (var p of players) {
+    if (p !== user) {
+      ret.push(p);
+    }
+  }
+  return ret;
+}
+
 function getPlayers() {
   return players.slice();
 }
@@ -345,7 +359,7 @@ function update() {
 }
 
 //Export stuff
-var funcs = [connectGame, changeHeading, getPlayers];
+var funcs = [connectGame, changeHeading, getOthers, getPlayers, getUser];
 funcs.forEach(function (f) {
   exports[f.name] = f;
 });
