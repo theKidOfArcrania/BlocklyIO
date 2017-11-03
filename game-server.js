@@ -76,7 +76,9 @@ function Game(id)
     nextInd++;
     core.initPlayer(grid, p);
     
-    log((p.name || "Unnamed") + " (" + p.num + ") joined.");
+    if (p.name.indexOf("BOT") == -1) {
+      log((p.name || "Unnamed") + " (" + p.num + ") joined.");
+    }
     
     client.on("requestFrame", function () {
       if (p.frame === frame)
@@ -142,7 +144,9 @@ function Game(id)
     client.on('disconnect', function() {
       p.die(); //Die immediately if not already.
       p.disconnected = true;
-      log((p.name || "Unnamed") + " (" + p.num + ") left.");
+      if (p.name.indexOf("BOT") == -1) {
+        log((p.name || "Unnamed") + " (" + p.num + ") left.");
+      }
     });
     return true;
   };
@@ -245,7 +249,9 @@ function Game(id)
         possColors.push(pl.baseColor);
         pl.handledDead = true;
       }
-      log((pl.name || "Unnamed") + " (" + pl.num + ") died.");
+      if (pl.name.indexOf("BOT") == -1) {
+        log((pl.name || "Unnamed") + " (" + pl.num + ") died.");
+      }
       pl.client.emit("dead");
       pl.client.disconnect(true); 
     }
