@@ -17,7 +17,6 @@ var MIN_BAR_WIDTH = 65;
 var BAR_HEIGHT = SHADOW_OFFSET + CELL_WIDTH;
 var BAR_WIDTH = 400;
 
-
 var canvas, canvasWidth, canvasHeight, gameWidth, gameHeight, ctx, offctx, offscreenCanvas;
 
 $(function () {
