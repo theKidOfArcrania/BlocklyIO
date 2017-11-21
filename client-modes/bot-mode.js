@@ -25,7 +25,7 @@ var THRESHOLD = 10;
 
 var startFrame = -1;
 var endFrame = -1;
-var coeffs = [1, -3, 1, -1, -3, 5, 4];
+var coeffs = [0.6164220147940495,-2.519369747858328,0.9198978109542851,-1.2158956330674564,-3.072901620397528, 5, 4];
 var grid, others, user, playerPortion;
 var DIST_TYPES = {
   land: {
