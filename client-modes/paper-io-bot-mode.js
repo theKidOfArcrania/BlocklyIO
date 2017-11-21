@@ -16,8 +16,6 @@ var GRID_SIZE = core.GRID_SIZE;
 var CELL_WIDTH = core.CELL_WIDTH;
 var MOVES = [[-1, 0], [0, 1], [1, 0], [0, -1]]
 
-var THRESHOLD = 10;
-
 var startFrame = -1;
 var endFrame = -1;
 var grid, others, user, playerPortion = {}, claim = [];
@@ -53,16 +51,16 @@ function update(frame) {
   }
   endFrame = frame;
 
-  if (frame % 6 == 1) {
+  if (frame % 6 == (startFrame + 1) % 6) {
     grid = client.grid;
     others = client.getOthers();
 
     //Note: the code below isn't really my own code. This code is in fact the
     //approximate algorithm used by the paper.io game. It has been modified from
     //the original code (i.e. deobfuscating) and made more efficient in some
-    //areas, otherwise, the original logic is about the same.
+    //areas (and some tweaks), otherwise, the original logic is about the same.
     var row = user.row, col = user.col, dir = user.currentHeading;
-    var thres = (1 + 2 * Math.random()) * .01 * GRID_SIZE * GRID_SIZE;
+    var thres = (.05 + .1 * Math.random()) * GRID_SIZE * GRID_SIZE;
 
     if (row < 0 || col < 0 || row >= GRID_SIZE || col >= GRID_SIZE) {
       return;
@@ -70,6 +68,7 @@ function update(frame) {
 
     if (grid.get(row, col) === user) {
       //When we are inside our territory
+      claim = [];
       weights = [25, 25, 25, 25];
       weights[dir] = 100;
       weights[mod(dir + 2)] = -9999;
@@ -143,6 +142,7 @@ function update(frame) {
         dir = claim.shift();
       }
     } else { 
+      claim = [];
       //We are playing a little bit more cautious when we are outside and have a
       //lot of land
       weights = [5, 5, 5, 5];
