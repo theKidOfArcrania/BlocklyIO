@@ -26,7 +26,6 @@
     "finalhandler": "^1.0.0",
     "serve-static": "^1.11.2",
     "socket.io": "^2.0.4",
-    "socket.io-client": "^2.0.4",
-    "socket.io-proxy": "^1.0.3"
+    "socket.io-client": "^2.0.4"
   }
 }
