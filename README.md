@@ -12,3 +12,6 @@ After cloning this repository, run the follow commands to install dependencies a
 npm install
 npm start
 ```
+## License
+
+This is licensed under MIT. As such, please provide due credit and link back to this repository if possible.
