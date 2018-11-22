@@ -4,7 +4,8 @@
   "description": "An multiplayer-IO type game (cloned from Paper-IO)",
   "main": "",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "lint": "eslint .",
+    "lint:fix": "npm run lint -- --fix"
   },
   "repository": {
     "type": "git",
