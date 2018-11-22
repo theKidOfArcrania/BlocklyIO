@@ -110,9 +110,16 @@ $(document).keydown(function(e) {
   switch (e.which)
   {
     case 37: newHeading = 3; break; //LEFT
+    case 65: newHeading = 3; break; //LEFT (A)
+
     case 38: newHeading = 0; break; //UP
+    case 87: newHeading = 0; break; //UP (W)
+
     case 39: newHeading = 1; break; //RIGHT
+    case 68: newHeading = 1; break; //RIGHT (D)
+
     case 40: newHeading = 2; break; //DOWN
+    case 83: newHeading = 2; break; //DOWN (S)
     default: return; //exit handler for other keys.
   }
   
