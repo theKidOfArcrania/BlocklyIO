@@ -4,6 +4,8 @@ This is a clone of the original Paper-IO released by Voodoo, except for one aspe
 
 This is just a fun side-project for me. If you would want to use this code, it would be nice to let me know.
 
+
+
 ## Running
 
 After cloning this repository, run the follow commands to install dependencies and set up server. Enjoy!
@@ -12,6 +14,17 @@ After cloning this repository, run the follow commands to install dependencies a
 npm install
 npm start
 ```
+
+### Creating bundle.js
+To create the `public/bundle.js` file, you probably need to run something like the following commands:
+```bash
+sudo npm install browserify -g
+browserify game-client.js > public/bundle.js
+```
+
+Or something like that. 
+
+
 ## License
 
 This is licensed under MIT. As such, please provide due credit and link back to this repository if possible.
