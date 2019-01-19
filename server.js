@@ -21,6 +21,8 @@ var server = http.createServer(function onRequest (req, res) {
 // Listen
 server.listen(port, hostname);
 
+console.log(`server running on http://${hostname}:${port}`);
+
 server = http.createServer();
 var io = require('socket.io')(server);
 io.set('transports', ['websocket']);
@@ -46,4 +48,3 @@ function tick() {
   setTimeout(tick, 1000 / 60);
 }
 tick();
-//setTimeout(tick, 1000 / 60);
